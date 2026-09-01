@@ -396,3 +396,44 @@ would be reasonable if you're modernizing anyway.
 - Do not open a pull request unless explicitly asked.
 - `master` here tracks upstream. Keep fork-specific work on feature branches so
   upstream can still be merged cleanly if it ever revives.
+
+### Opening a PR against upstream
+
+A cross-fork PR to `jerrywu64/character-sorter` **cannot be opened from a Claude
+Code session** that was started from this fork. Two independent local gates stop
+it, and neither is GitHub refusing:
+
+1. **Session repo scope.** Only the repos a session was sourced from are in
+   scope. `create_pull_request` with owner `jerrywu64` fails the scope check
+   before any API call: `Access denied: repository "jerrywu64/character-sorter"
+   is not configured for this session.`
+2. **The auto-mode classifier.** The obvious fix — `add_repo` for
+   `jerrywu64/character-sorter` — is itself blocked in `auto` permission mode
+   (`Blocked by classifier`). There is no settings file in this repo or the
+   container, so no allowlist rule is in play; the classifier decides alone, and
+   it is not clear a `permissions.allow` entry would override it.
+
+Verified once (2026-09-01): `list_repos` reports `jerrywu64/character-sorter` as
+public with `can_push: true` for the authenticated user `aofei-liu`, so the
+account's GitHub access is likely fine. Every denial seen so far is local
+tooling, not GitHub — don't report it to the user as "upstream denied access",
+and don't retry the blocked call or route around it.
+
+**So the workflow is: prepare and verify everything, then hand the user a
+compare link and let them click Create.**
+
+- Cut the branch from upstream's actual head, not from fork `master`, and keep
+  fork-only docs (`CLAUDE.md`, `ROADMAP.md`, `CONTRIBUTING.md`) out of it.
+- Verify on Django 2.0.6 (Path A) before handing it over, per "Running the code".
+- Push the branch to `aofei-liu/character-sorter` — that part works normally.
+- Give the user the compare URL, the title, and the body as a file they can
+  paste without reformatting:
+
+  ```
+  https://github.com/jerrywu64/character-sorter/compare/master...aofei-liu:character-sorter:<branch>?expand=1
+  ```
+
+- Tell them the expected file count and commit count so they can spot a wrong
+  base on the compare page before submitting.
+- Upstream has **no PR template** at `45a897d` (no `.github/`, no `docs/`), so
+  there are no headings to mirror.
