@@ -187,6 +187,8 @@ That holds whether or not PR 1 has merged.
 404 every not-found *and* every not-yours, 405 wrong method (empty body, with
 an `Allow` header, from `require_http_methods`). 404-for-not-yours is
 deliberate: distinguishing them would confirm another user's list exists.
+Authentication is checked before the method, so an anonymous caller always
+gets the JSON 401 rather than an HTML 405.
 
 #### Client contract
 
@@ -196,11 +198,24 @@ deliberate: distinguishing them would confirm another user's list exists.
   `char1` and `char2` explicitly, so answer the pair you were handed and let
   the next `GET` propose whatever it likes. A client that re-fetches on resume
   simply gets a different, equally valid question.
-- **`timestamp` is optional on `POST /comparisons`** and must carry a UTC
-  offset — a naive value is a 400 rather than a silent misfile. It exists for
-  offline queueing: `SortRecord.timestamp` is `auto_now_add`, so the endpoint
-  overwrites it after `save()`. Safe, because `compute_ratings` replays in
-  timestamp order.
+- **`timestamp` is optional on `POST /comparisons`**, must carry a UTC offset,
+  and must not be in the future. It exists for offline queueing:
+  `SortRecord.timestamp` is `auto_now_add`, so the endpoint overwrites it
+  after `save()`. Backdating is safe because `compute_ratings` replays in
+  timestamp order; *forward*-dating is not, and is refused — the Glicko maths
+  measures elapsed days from each record, and a negative interval takes the
+  square root of a negative, which 500s the ranking, `/next`, `/graph` and the
+  HTML pages for that list until wall-clock time catches up. A client with a
+  fast clock would otherwise brick a list by accident.
+- **`value` must be `-1`, `0` or `1`** — the three the sort page offers, and
+  the only three `process_record` can read. It maps `value` to a win/tie/loss
+  score, so a large one diverges the ratings until `math.pow` overflows and
+  every read path for that list 500s permanently. The HTML view has the same
+  gap, but only radio buttons feed it; an API documents the field.
+- **A rejected `POST /comparisons` stores nothing.** The body is fully
+  validated before the record is created, and the two writes (insert, then the
+  timestamp overwrite) share a transaction — so a client that retries after a
+  400 does not end up with a duplicate.
 - **Writes need `X-CSRFToken`.** The views are not `csrf_exempt`, since they
   authenticate from the session.
 - **Every ranking request replays the entire history.** Acceptable for a page
