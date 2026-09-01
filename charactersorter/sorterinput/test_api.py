@@ -1,7 +1,9 @@
+import datetime
 import json
 
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 import controller.models
@@ -52,7 +54,10 @@ class AuthenticationTest(ApiTestCase):
                 ("get", "/api/lists", None),
                 ("post", "/api/lists",
                  {"title": "T", "controller_type": "IS"}),
-                ("get", "/api/lists/{}".format(self.mine.id), None)):
+                ("get", "/api/lists/{}".format(self.mine.id), None),
+                # Authentication is checked before the method, so even a
+                # disallowed method answers in JSON rather than an HTML 405.
+                ("delete", "/api/lists", None)):
             response = self.request(method, url, body)
             self.assertEqual(
                 response.status_code, 401,
@@ -218,7 +223,34 @@ class ComparisonTest(ApiTestCase):
         record = controller.models.SortRecord.objects.get(
             pk=body_of(response)["id"])
         self.assertEqual(record.timestamp, parse_datetime(stamp))
-        # A naive timestamp is refused rather than silently misfiled.
+
+    def test_an_invalid_comparison_is_refused_and_stores_nothing(self):
+        """The record used to be saved before the timestamp was validated, so
+        a 400 still left one behind for a retrying client to duplicate. The
+        value and timestamp bounds matter because out-of-range input does not
+        just produce bad rankings -- it makes compute_ratings raise, which
+        500s the API and the HTML pages alike for that list."""
+        future = (timezone.now() + datetime.timedelta(days=400)).isoformat()
+        for label, override in (
+                ("naive timestamp", {"timestamp": "2018-07-12T00:01:02"}),
+                ("unparseable timestamp", {"timestamp": "yesterday"}),
+                ("future timestamp", {"timestamp": future}),
+                ("out-of-range value", {"value": 1000000}),
+                ("non-numeric value", {"value": "win"}),
+                ("self-match", {"char2": self.mine.chars[0].id})):
+            body = {"char1": self.mine.chars[0].id,
+                    "char2": self.mine.chars[1].id, "value": 1}
+            body.update(override)
+            self.assertEqual(
+                self.request("post", self.url, body).status_code, 400, label)
+            self.assertEqual(self.mine.sortrecord_set.count(), 1, label)
+        # The list is still rankable: an accepted bad record would raise here
+        # rather than merely skew the numbers.
+        self.assertEqual(self.request(
+            "get", "/api/lists/{}".format(self.mine.id)).status_code, 200)
+        # Positive control: a well-formed body is still accepted, so the
+        # guards above are not simply refusing everything.
         self.assertEqual(self.request("post", self.url, {
             "char1": self.mine.chars[0].id, "char2": self.mine.chars[1].id,
-            "value": 1, "timestamp": "2018-07-12T00:01:02"}).status_code, 400)
+            "value": 0}).status_code, 201)
+        self.assertEqual(self.mine.sortrecord_set.count(), 2)
