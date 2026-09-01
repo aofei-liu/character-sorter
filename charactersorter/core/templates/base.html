@@ -1,18 +1,23 @@
 {% load static %}
-<html>
+<!DOCTYPE html>
+<html lang="en">
     <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>
             {% block title %}
             Character Sorter
             {% endblock %}
         </title>
+        <link rel="stylesheet" href="{% static 'core/css/style.css' %}">
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
         {% block js %}{% endblock %}
     </head>
     <body>
-        Notice: This website almost certainly has security vulnerabilities. I
-        took vague precautions but if this website ever asks you for your
-        social security number, assume that it got hacked.
+        <div class="container">
+        <p class="fineprint">Notice: This website almost certainly has security
+        vulnerabilities. I took vague precautions but if this website ever asks
+        you for your social security number, assume that it got hacked.</p>
         {% if user.is_authenticated %}
             <p>Welcome, {{ user.get_username }}. <a href="{% url "logout" %}">Log out</a></p>
         {% else %}
@@ -20,6 +25,6 @@
         {% endif %}
         {% block body %}
         {% endblock %}
+        </div>
     </body>
 </html>
-

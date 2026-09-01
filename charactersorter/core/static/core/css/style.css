@@ -1,0 +1,98 @@
+/* The only stylesheet in the project: no framework, no build step. */
+
+body {
+    margin: 0;
+    padding: 0.5rem 1rem 2rem;
+    font-family: sans-serif;
+    line-height: 1.5;
+    color: #222;
+}
+
+.container {
+    max-width: 55rem;
+    margin: 0 auto;
+}
+
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.2rem; }
+
+/* Replaces the <font size="0"> tags. */
+.fineprint {
+    font-size: 0.8rem;
+    color: #555;
+}
+
+/* 1rem keeps mobile Safari from zooming in when a field takes focus. */
+input, select, textarea, button {
+    font-family: inherit;
+    font-size: 1rem;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+button, input[type="submit"] {
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+}
+
+/* Sort page: each choice is a whole tappable card, so answering a comparison
+   is one tap rather than a radio button plus a submit. */
+.choices {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 0 -0.5rem;
+    padding: 0;
+    list-style: none;
+}
+
+.choices li {
+    flex: 1 1 14rem;
+    padding: 0.5rem;
+}
+
+.choice {
+    display: block;
+    width: 100%;
+    min-height: 6rem;
+    padding: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 1.1rem;
+    text-align: center;
+    cursor: pointer;
+}
+
+.choice:active { background: #e8eef7; }
+.choice[disabled] { opacity: 0.5; }
+.choice img { display: block; margin: 0.5rem auto; max-width: 100%; height: auto; }
+.choice .fineprint { display: block; word-break: break-all; }
+
+.choice-same {
+    min-height: 2.75rem;
+    margin: 0.5rem 0 1rem;
+    font-size: 1rem;
+}
+
+/* Formset tables stack into one card per row on narrow screens. */
+table.form { width: 100%; border-collapse: collapse; }
+table.form th, table.form td { padding: 0.25rem; text-align: left; vertical-align: top; }
+
+@media (max-width: 40em) {
+    table.form thead { display: none; }
+    table.form, table.form tbody, table.form tr, table.form td { display: block; }
+    table.form tr {
+        margin-bottom: 0.75rem;
+        padding: 0.5rem;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+    }
+    table.form td::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 0.8rem;
+        font-weight: bold;
+        color: #555;
+    }
+    table.form input[type="text"], table.form select { width: 100%; }
+}
