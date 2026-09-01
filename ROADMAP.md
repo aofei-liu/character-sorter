@@ -228,16 +228,25 @@ gets the JSON 401 rather than an HTML 405.
 
 #### Merge order
 
-3a and PR 1 do not conflict at all — verified by a trial merge, which is clean
-and leaves all 18 tests passing under both `python` and `python -O`. 3a adds a
-module rather than editing `sorterinput/views.py`, and PR 1 never touches
-`charactersorter/urls.py`. So the two are independent, and either order works.
+PR 1 has merged to this fork's `master`, and 3a rebases onto it cleanly — the
+two never conflicted, because 3a adds a module instead of editing
+`sorterinput/views.py`, and PR 1 never touches `charactersorter/urls.py`. 3a
+also assumes nothing from PR 1: it re-derives every ownership check at its own
+call sites, and its tests pass on bare upstream `45a897d` without PR 1 present.
 
-PR 1 should still go first, for reasons that are not mechanical: it is the
-cheap signal test of whether the maintainer is reachable at all, and it closes
-the same holes on the HTML side. 3a assumes nothing from it — it re-derives
-every ownership check at its own call sites, so it is not left insecure if PR 1
-stalls.
+**Nothing has been sent upstream yet.** Every PR so far has been
+fork-internal. So 3a is not the right first contact: this document makes PR 1
+the cheap signal test of whether the maintainer is reachable at all, and PR 2
+the highest value-per-line change. Spending the one likely round of review
+attention on the largest and most speculative diff — an API whose own
+justification is deferred, since tokens were dropped for want of a confirmed
+native client — inverts that. Send PR 1, then PR 2; hold 3a until the
+maintainer has answered something.
+
+The upstream branch is ready when that time comes. Per `CONTRIBUTING.md`,
+cherry-picking the two source commits onto `45a897d` is clean, leaves only
+`charactersorter/` files, and passes the suite under both `python` and
+`python -O`.
 
 ## Native app vs PWA
 
