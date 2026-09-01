@@ -1,0 +1,224 @@
+import json
+
+from django.contrib.auth.models import User
+from django.test import Client, TestCase
+from django.utils.dateparse import parse_datetime
+
+import controller.models
+from .models import Character, CharacterList
+
+def body_of(response):
+    return json.loads(response.content.decode("utf-8"))
+
+
+class ApiTestCase(TestCase):
+
+    def setUp(self):
+        self.victim = User.objects.create_user("victim", password="pw")
+        self.attacker = User.objects.create_user("attacker", password="pw")
+        self.theirs = self.make_list(self.victim)
+        self.mine = self.make_list(self.attacker)
+        self.client.force_login(self.attacker)
+
+    def make_list(self, owner):
+        """A list with two characters and one comparison between them."""
+        charlist = CharacterList.objects.create(
+            owner=owner, title="List of {}".format(owner.username),
+            controller_type=CharacterList.GLICKO)
+        charlist.chars = [
+            Character.objects.create(
+                characterlist=charlist, name=name, fandom="Fandom")
+            for name in ("Alice", "Bob")]
+        charlist.record = controller.models.SortRecord.objects.create(
+            charlist=charlist, char1=charlist.chars[0],
+            char2=charlist.chars[1], value=1)
+        return charlist
+
+    def request(self, method, url, body=None, client=None):
+        client = client or self.client
+        if body is None:
+            return getattr(client, method)(url)
+        return getattr(client, method)(
+            url, json.dumps(body), content_type="application/json")
+
+
+class AuthenticationTest(ApiTestCase):
+    """api_view gates every endpoint on the session, and because it is not
+    csrf_exempt, Django's CSRF protection still covers the writes."""
+
+    def test_anonymous_requests_are_refused(self):
+        self.client.logout()
+        for method, url, body in (
+                ("get", "/api/lists", None),
+                ("post", "/api/lists",
+                 {"title": "T", "controller_type": "IS"}),
+                ("get", "/api/lists/{}".format(self.mine.id), None)):
+            response = self.request(method, url, body)
+            self.assertEqual(
+                response.status_code, 401,
+                "{} {} was not refused".format(method.upper(), url))
+            # A JSON error, not a redirect to the HTML login page.
+            self.assertIn("error", body_of(response))
+        # Positive control: the same three requests succeed once logged in.
+        self.client.force_login(self.attacker)
+        for method, url, body, expected in (
+                ("get", "/api/lists", None, 200),
+                ("post", "/api/lists", {"title": "T",
+                                        "controller_type": "IS"}, 201),
+                ("get", "/api/lists/{}".format(self.mine.id), None, 200)):
+            self.assertEqual(
+                self.request(method, url, body).status_code, expected,
+                "{} {} failed for its owner".format(method.upper(), url))
+
+    def test_a_write_without_a_csrf_token_is_refused(self):
+        strict = Client(enforce_csrf_checks=True)
+        strict.force_login(self.attacker)
+        body = {"title": "T", "controller_type": "IS"}
+        self.assertEqual(
+            self.request("post", "/api/lists", body, strict).status_code, 403)
+        # Positive control: the same client succeeds once it sends the header
+        # a browser client would, so the 403 is about CSRF alone.
+        strict.get("/login/")
+        response = strict.post(
+            "/api/lists", json.dumps(body), content_type="application/json",
+            HTTP_X_CSRFTOKEN=strict.cookies["csrftoken"].value)
+        self.assertEqual(response.status_code, 201)
+
+
+class ListOwnershipTest(ApiTestCase):
+    """owned_list is the API's whole authorization story, so this walks every
+    list-scoped route rather than re-testing the helper once per endpoint."""
+
+    ENDPOINTS = (
+        ("get", "/api/lists/{list}", None, 200),
+        ("patch", "/api/lists/{list}", {"title": "Renamed"}, 200),
+        ("get", "/api/lists/{list}/characters", None, 200),
+        ("post", "/api/lists/{list}/characters",
+         {"name": "New", "fandom": "F"}, 201),
+        ("patch", "/api/lists/{list}/characters/{char}",
+         {"name": "Renamed"}, 200),
+        ("delete", "/api/lists/{list}/characters/{char}", None, 204),
+        ("get", "/api/lists/{list}/next", None, 200),
+        ("post", "/api/lists/{list}/comparisons", "comparison", 201),
+        ("delete", "/api/lists/{list}/comparisons/{record}", None, 204),
+        ("get", "/api/lists/{list}/graph", None, 200),
+        ("delete", "/api/lists/{list}", None, 204),
+    )
+
+    def fill(self, template, charlist):
+        return template.format(
+            list=charlist.id, char=charlist.chars[0].id,
+            record=charlist.record.id)
+
+    def body_for(self, body, charlist):
+        if body != "comparison":
+            return body
+        return {"char1": charlist.chars[0].id,
+                "char2": charlist.chars[1].id, "value": 1}
+
+    def test_every_route_refuses_a_list_owned_by_someone_else(self):
+        for method, template, body, expected in self.ENDPOINTS:
+            self.assertEqual(
+                self.request(method, self.fill(template, self.theirs),
+                             self.body_for(body, self.theirs)).status_code,
+                404,
+                "{} {} reached another user's list".format(
+                    method.upper(), template))
+            # Positive control on a fresh list of the attacker's own, so an
+            # over-restrictive filter fails here instead of passing quietly.
+            mine = self.make_list(self.attacker)
+            self.assertEqual(
+                self.request(method, self.fill(template, mine),
+                             self.body_for(body, mine)).status_code, expected,
+                "{} {} failed for its owner".format(method.upper(), template))
+        self.assertEqual(self.theirs.character_set.count(), 2)
+        self.assertEqual(self.theirs.sortrecord_set.count(), 1)
+        self.theirs.refresh_from_db()
+        self.assertEqual(self.theirs.title, "List of victim")
+
+
+class NestedLookupTest(ApiTestCase):
+    """A character or record id is looked up through the list in the URL, so
+    one belonging to another list is unreachable even from a list I own."""
+
+    def test_foreign_child_ids_are_not_reachable_through_my_own_list(self):
+        for method, template, body in (
+                ("patch", "/api/lists/{}/characters/{}", {"name": "Pwned"}),
+                ("delete", "/api/lists/{}/characters/{}", None)):
+            self.assertEqual(
+                self.request(method,
+                             template.format(self.mine.id,
+                                             self.theirs.chars[0].id),
+                             body).status_code, 404)
+        self.assertEqual(
+            self.request("delete", "/api/lists/{}/comparisons/{}".format(
+                self.mine.id, self.theirs.record.id)).status_code, 404)
+        self.theirs.chars[0].refresh_from_db()
+        self.assertEqual(self.theirs.chars[0].name, "Alice")
+        self.assertEqual(self.theirs.sortrecord_set.count(), 1)
+        # Positive control: my own child ids under my own list still work.
+        self.assertEqual(
+            self.request("patch", "/api/lists/{}/characters/{}".format(
+                self.mine.id, self.mine.chars[0].id),
+                {"name": "Renamed"}).status_code, 200)
+        self.assertEqual(
+            self.request("delete", "/api/lists/{}/comparisons/{}".format(
+                self.mine.id, self.mine.record.id)).status_code, 204)
+
+
+class OwnershipFieldsTest(ApiTestCase):
+    """bind_form drops keys the ModelForm does not declare, so owner and
+    characterlist have nothing to bind to."""
+
+    def test_ownership_fields_in_the_body_are_ignored(self):
+        response = self.request("post", "/api/lists", {
+            "owner": self.victim.id, "title": "Gift",
+            "controller_type": CharacterList.INSERTION})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            CharacterList.objects.get(title="Gift").owner, self.attacker)
+
+        response = self.request(
+            "post", "/api/lists/{}/characters".format(self.mine.id),
+            {"characterlist": self.theirs.id,
+             "name": "Mallory", "fandom": "Nowhere"})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            Character.objects.get(name="Mallory").characterlist, self.mine)
+        self.assertEqual(self.theirs.character_set.count(), 2)
+
+
+class ComparisonTest(ApiTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.url = "/api/lists/{}/comparisons".format(self.mine.id)
+
+    def test_a_comparison_cannot_name_a_character_from_another_list(self):
+        """register_comparison guards this with an assert, which python -O
+        strips, so the ids are resolved through the list first."""
+        response = self.request("post", self.url, {
+            "char1": self.mine.chars[0].id,
+            "char2": self.theirs.chars[0].id, "value": 1})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.mine.sortrecord_set.count(), 1)
+        # Positive control: two of my own characters record fine.
+        response = self.request("post", self.url, {
+            "char1": self.mine.chars[0].id,
+            "char2": self.mine.chars[1].id, "value": 1})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self.mine.sortrecord_set.count(), 2)
+
+    def test_a_client_supplied_timestamp_is_stored(self):
+        stamp = "2018-07-12T00:01:02+00:00"
+        response = self.request("post", self.url, {
+            "char1": self.mine.chars[0].id, "char2": self.mine.chars[1].id,
+            "value": 1, "timestamp": stamp})
+        self.assertEqual(response.status_code, 201)
+        record = controller.models.SortRecord.objects.get(
+            pk=body_of(response)["id"])
+        self.assertEqual(record.timestamp, parse_datetime(stamp))
+        # A naive timestamp is refused rather than silently misfiled.
+        self.assertEqual(self.request("post", self.url, {
+            "char1": self.mine.chars[0].id, "char2": self.mine.chars[1].id,
+            "value": 1, "timestamp": "2018-07-12T00:01:02"}).status_code, 400)
