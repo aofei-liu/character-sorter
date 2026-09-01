@@ -14,18 +14,12 @@ which is deployed at <https://charsorter.lndyn.com/>. As of this writing the
 fork's `master` is at the same commit as upstream `master` (`45a897d`) — there
 is no divergence yet. Upstream has been dormant since 2018.
 
-**Fork goals** (what the owner actually wants to build here):
-
-1. A mobile-friendly version of the web UI — the primary goal.
-2. Possibly a native Android app, if the mobile web version proves insufficient.
-
-Both must **read and write the live database behind `charsorter.lndyn.com`**,
-not a local copy. The owner expects to obtain what they need from upstream by
-contributing PRs there. That requirement drives the whole architecture — see
-[Roadmap for this fork](#roadmap-for-this-fork) at the bottom.
-
-An earlier goal, porting the owner's account data into a separate prototype
-database, is **superseded** by the shared-database requirement.
+The fork exists to build a mobile-friendly version of the UI, which must read
+and write the **live database behind `charsorter.lndyn.com`** rather than a
+local copy. That constrains what code may be written here — most importantly,
+anything destined for the upstream deployment must run on Django 2.0.6 /
+Python 3.7. Planning, sequencing and rationale live in
+[`ROADMAP.md`](ROADMAP.md); this file covers only the code as it stands.
 
 ## Repository layout
 
@@ -71,7 +65,17 @@ User (django.contrib.auth)
 `SortRecord.value` is the comparison result: **positive = char1 won, negative =
 char2 won, 0 = tie**. This is the app's entire source of truth — rankings are
 always recomputed from the full `SortRecord` history on every request. Nothing
-is denormalized or cached in the database.
+is denormalized or cached in the database. Each record is replayed twice
+(`CONFIDENCE_BOOST = 2`), and `get_last_matches` loads the history a second
+time, so the cost of any ranking scales with the list's whole comparison
+history.
+
+`SortRecord.timestamp` is `auto_now_add=True`, so it **cannot be set when the
+record is created**. Code that needs a specific timestamp (backdating an
+import, or accepting a comparison made offline) must overwrite it after
+`save()` — `controller/tests.py` does exactly this via
+`rec.timestamp = ts; rec.save()`. Backdating is safe because `compute_ratings`
+does `order_by("timestamp")` before replaying.
 
 Note the cross-app FK direction: `controller.SortRecord` points at
 `sorterinput` models, and `sorterinput.views` imports `controller.models`. The
@@ -359,136 +363,6 @@ wants these gone: "use css, get rid of font tag lol").
 `InsertionSortController` model, tear it down, rename `InsertionSortRecord` →
 `SortRecord`, then rename its `controller` field → `charlist`. Squashing them
 would be reasonable if you're modernizing anyway.
-
-## Roadmap for this fork
-
-### The governing decision: one live database, owned upstream
-
-The owner wants the phone-friendly version to **read and write the same
-database that `charsorter.lndyn.com` uses** — not a copy, not a periodic sync.
-That single requirement drives everything below, because code can only write
-that database if it runs somewhere that can reach it, and the database is on
-the upstream maintainer's host (`local_settings.py` has `HOST: localhost`; it
-is not exposed).
-
-Three possible shapes, evaluated:
-
-| Shape | Verdict |
-| --- | --- |
-| Fork connects to upstream's Postgres remotely | **Avoid.** Requires the maintainer to expose 5432 or grant a tunnel — a bigger security ask than merging a PR. Worse, the fork's migrations would mutate his live schema through a shared `django_migrations` table: one stray `makemigrations` breaks production. |
-| Mobile UI merged upstream, owner uses the deployed site | **Best first step.** Smallest change, no infrastructure, no credentials. Cost: every future tweak needs the maintainer to merge. |
-| JSON API merged upstream once, fork becomes a pure client | **Best end state.** One focused PR, then the fork iterates independently forever. Required for any native app. |
-
-The last two are complementary, and the recommended plan does both in order.
-
-**Consequence — this reverses the "modernize" advice above.** Anything that
-runs on the upstream host must run on **Django 2.0.6 / Python 3.7**. Path B in
-[Running the code](#running-the-code) still applies to *local development of
-this fork*, but no PR sent upstream may depend on a modern Django. In practice
-this costs nothing for the responsive UI (a viewport tag, CSS, and template
-structure are version-agnostic) and matters only for the API — see below.
-
-**Consequence — the data-porting problem disappears.** Scraping saved HTML,
-recovering Glicko `(rating, RD)` pairs from `graph.html`, and a seed-rating
-field on `Character` are all **superseded**. If the fork reads the live
-database, the `SortRecord` history is simply there. Do not build the
-`import_scraped` command described in earlier notes; it solves a problem this
-architecture removes.
-
-### PR sequence
-
-Each step is independently useful and independently mergeable. Upstream has
-been dormant since 2018, so every PR should be small, additive, and default to
-existing behavior — that maximizes the chance of a review.
-
-**PR 1 — Authorization fixes.** Close the POST-body holes documented in
-[Known issues](#known-issues-and-gotchas): scope `undo`'s `SortRecord` lookup
-to `list_id`, filter `ModifyCharFormset`/`ModifyCharlistFormset` querysets on
-POST, and validate the hidden `characterlist`/`owner` fields against
-`request.user` instead of trusting them. Pure bug fix, no behavior change for
-honest users, ~30 lines. **This is a prerequisite for PR 3** — through HTML
-forms these holes are bad; through a JSON API they are trivially scriptable.
-
-**PR 2 — Responsive web UI.** The highest value-per-line change in the whole
-plan, and it needs no API:
-
-1. `base.html`: add `<!DOCTYPE html>`, `<meta charset="utf-8">`, and
-   `<meta name="viewport" content="width=device-width, initial-scale=1">`.
-   The missing viewport tag is the single biggest reason the site is unusable
-   on a phone.
-2. Add the first stylesheet under `core/static/` and `{% load static %}` it.
-   Replace the `<font size="0">` tags in `sort.html` with CSS.
-3. Rework the sort page for thumbs. It is currently three radio buttons plus a
-   submit button — four taps per comparison. Two large tappable cards plus a
-   "Same" button, submitting on tap, makes it one. **This is the core loop;
-   optimize it before anything else.**
-4. Stack the `edit.html` / `editlists.html` formset tables into cards on narrow
-   screens. Mirror any change across both — they share an identical structure.
-
-All Django 2.0-compatible. A PWA manifest plus a service worker is a natural
-follow-on and still requires nothing from the server.
-
-**PR 3 — JSON API.** Only needed for a native app or for independent iteration.
-
-Do **not** add Django REST Framework. Modern DRF requires Django 4.2+, so
-upstream would need a pinned 2018 release; and this app has six views returning
-plain Python data already. Hand-rolled `JsonResponse` views add no dependency,
-behave identically on Django 2.0 and 5.x, and are far likelier to be merged.
-
-Auth: a simple opaque token model plus an `Authorization: Token <key>` header.
-Session cookies work for a PWA but are awkward from native code. JWT/OAuth2 is
-overkill for a single-user hobby app.
-
-Sketch:
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/auth/token` | username + password → token |
-| `GET` `POST` | `/api/lists` | list / create `CharacterList`s |
-| `GET` `PATCH` `DELETE` | `/api/lists/<id>` | ranked chars, annotations, progress |
-| `GET` `POST` | `/api/lists/<id>/characters` | list / add `Character`s |
-| `PATCH` `DELETE` | `/api/characters/<id>` | edit / remove one |
-| `GET` | `/api/lists/<id>/next` | next comparison pair (+ image URLs) |
-| `POST` | `/api/lists/<id>/comparisons` | `{char1, char2, value, timestamp?}` |
-| `DELETE` | `/api/lists/<id>/comparisons/<rec_id>` | undo — **must** verify `rec.charlist_id == list_id` |
-| `GET` | `/api/lists/<id>/graph` | Glicko rating / RD arrays |
-
-The `controller/` layer already returns plain Python data and needs **no
-changes** to back any of this. All the work is in `sorterinput/views.py`.
-
-### API design constraints found in the code
-
-Three things about the existing implementation that will bite an API client:
-
-- **`SortRecord.timestamp` is `auto_now_add=True`**, so it cannot be set at
-  creation time. To accept a client-supplied timestamp (needed for offline
-  queueing, where a phone submits comparisons made while disconnected),
-  overwrite it after `save()` — exactly what `controller/tests.py` does via
-  `rec.timestamp = ts; rec.save()`. This is safe: `compute_ratings` does
-  `order_by("timestamp")` before replaying, so backdated records sort into
-  place, and Glicko's RD decay becomes *more* accurate, not less.
-- **`get_next_comparison` is non-deterministic for Glicko** — it samples from a
-  softmax, so two `GET /next` calls return different pairs. That is fine
-  because `POST /comparisons` names `char1` and `char2` explicitly, but a
-  client must not assume it can re-fetch "the same" pending question.
-- **Every ranking request replays the entire history.** `compute_ratings` walks
-  all `SortRecord`s for the list, twice each (`CONFIDENCE_BOOST = 2`), and
-  `get_last_matches` loads them all again. Acceptable for a page load; it
-  becomes the hot path when an app polls for comparisons. If it gets slow, cache
-  on `SortRecord` count + max timestamp — but do **not** reach for the
-  per-request `dirty` flag, which is explicitly not valid across requests.
-
-### Native app vs PWA
-
-A native Android client cannot talk to Postgres directly — that would mean
-shipping database credentials in an extractable binary and exposing the port
-publicly. Native therefore *requires* PR 3.
-
-Given the app's shape (forms, text lists, one image pair at a time), a
-responsive site plus a PWA manifest delivers most of the value for a fraction
-of the effort, and PR 2 alone gets a usable phone experience with zero
-infrastructure. Treat native as a later choice to be re-confirmed with the
-owner, not a settled goal.
 
 ## Git workflow
 
