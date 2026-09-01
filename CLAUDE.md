@@ -211,7 +211,7 @@ So there are two paths, and you should know which one you're on:
 pyenv/conda in the default remote container (`python3.10`–`3.13` only), so this
 generally means Docker.
 
-**Path B — modernize (recommended for the fork's goals).** Verified working:
+**Path B — modernize, for local development only.** Verified working:
 `Django 4.2.16` + current `numpy`/`scipy` on Python 3.11, with **two** changes:
 
 1. `charactersorter/urls.py` uses two removed APIs:
@@ -229,6 +229,15 @@ With both applied, `manage.py check` is clean (only `models.W042`
 `DEFAULT_AUTO_FIELD` warnings) and **all 7 tests pass**. Nothing else in the
 codebase needed touching. `django-debug-toolbar` and `psycopg2` are the only
 other deps and both have current releases.
+
+> **Do not commit these two changes as part of a feature branch.** They are a
+> local convenience for running the code on a modern interpreter. The upstream
+> deployment runs Django 2.0.6 / Python 3.7, and any change destined for it must
+> run there — so a diff that quietly carries the `urls.py` rewrite or the
+> migration edit will break production. Keep them as uncommitted working-tree
+> edits, or as a separate branch you never merge into feature work. Modernizing
+> upstream is its own proposal, not a side effect. Verify feature work against
+> Django 2.0.6 (Path A) before opening a PR.
 
 ### The migration landmine (bites any fresh SQLite database)
 
