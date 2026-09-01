@@ -301,6 +301,12 @@ would bury real changes in noise.
 
 ## Conventions
 
+- **Change scope:** one concern per PR, roughly 100-200 lines. This matters most
+  for PRs sent to `jerrywu64/character-sorter` — upstream has been dormant since
+  2018, and a small single-purpose diff is the only kind likely to get read.
+  Prefer framework facilities over hand-rolled equivalents. Keep prose out of
+  the code: non-obvious architecture belongs in this file or `ROADMAP.md`, not
+  in a block comment.
 - **Python style:** 4-space indent, ~79-col lines, `"double quotes"` mostly but
   not religiously, `.format()` (not f-strings — this predates the codebase's
   adoption of them). Hanging indents wrap at the opening paren.
@@ -348,21 +354,18 @@ tracked and contains a real-looking `SECRET_KEY` and PostgreSQL password. If
 production ever shared them, they're compromised. Don't add more secrets to it;
 treat rotating them as a prerequisite for any real deployment of this fork.
 
-**Authorization holes.** `@requires_list_owner` only validates the `list_id` in
-the *URL*. Object IDs arriving in the POST *body* are unchecked:
-
-- `undo` does `get_object_or_404(SortRecord, pk=request.POST["last"])` with no
-  check that the record belongs to `list_id` — any authenticated user who owns
-  any list can delete any `SortRecord` by ID.
-- `editlist` binds `ModifyCharFormset(request.POST)` without a queryset filter,
-  and `AddCharForm` takes `characterlist` from a hidden input — so a user can
-  edit/delete characters in, or add characters to, someone else's list.
-- `editcharlists` has the same shape: unfiltered `ModifyCharlistFormset` on
-  POST, and `owner` as a hidden input on `AddCharlistForm`.
-
-The README's "this server almost certainly has security vulnerabilities" is
-accurate. **Fix these before exposing anything new**, especially a JSON API,
-where they'd be trivially exploitable.
+**Authorization holes (fixed).** `@requires_list_owner` only validates the
+`list_id` in the *URL*; object IDs arriving in the POST *body* used to be
+unchecked. `undo` now scopes its `SortRecord` lookup to `list_id`, `editlist`
+filters `ModifyCharFormset`'s queryset, and the add forms no longer accept
+`characterlist`/`owner` from the client — the view sets them from the URL and
+`request.user`. `sorterinput/tests.py` carries a regression test per hole.
+`sortlist`'s `char1`/`char2` are validated by `register_comparison`, which now
+looks characters up through `charlist.character_set` instead of asserting after
+a global fetch — the old `assert` vanished under `python -O`, leaking the
+victim's name through the "Undo last sort" button. `editcharlists` already
+filtered `ModifyCharlistFormset` on POST; earlier notes here claiming otherwise
+were wrong.
 
 **Template XSS.** `graph.html` renders `{{ graph_info.characters|safe }}` inside
 a `<script>` block. The value is `json.dumps`'d, which escapes quotes but *not*

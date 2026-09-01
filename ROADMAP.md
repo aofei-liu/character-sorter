@@ -50,16 +50,19 @@ Each step is independently useful and independently mergeable. Upstream has been
 dormant since 2018, so every PR should be small, additive, and default to
 existing behavior — that maximizes the chance of a review.
 
-### PR 1 — Authorization fixes
+### PR 1 — Authorization fixes *(implemented; not yet sent upstream)*
 
 Close the POST-body holes documented under "Known issues" in `CLAUDE.md`:
 
 - Scope `undo`'s `SortRecord` lookup to `list_id`.
-- Filter `ModifyCharFormset` / `ModifyCharlistFormset` querysets on POST.
-- Validate the hidden `characterlist` / `owner` fields against `request.user`
-  instead of trusting them.
+- Filter the `ModifyCharFormset` queryset on POST (`ModifyCharlistFormset`
+  already was).
+- Drop the hidden `characterlist` / `owner` fields from the add forms and set
+  them in the view instead of trusting the client.
+- Look comparison characters up through `charlist.character_set`, replacing an
+  `assert` that `python -O` strips.
 
-Pure bug fix, no behavior change for honest users, roughly 30 lines. Also the
+Pure bug fix, no behavior change for honest users; ~35 lines of source. Also the
 lowest-stakes way to find out whether the maintainer is still reachable.
 
 **This is a prerequisite for PR 3.** Through HTML forms these holes are bad;
