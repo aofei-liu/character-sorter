@@ -90,47 +90,139 @@ follow-on and still requires nothing from the server.
 
 ### PR 3 — JSON API
 
-Only needed for a native app, or to iterate without waiting on upstream reviews.
+Only needed for a native app, or to iterate without waiting on upstream
+reviews.
 
 **Do not add Django REST Framework.** Modern DRF requires Django 4.2+, so
 upstream would need a pinned 2018 release. This app has six views returning
 plain Python data already; hand-rolled `JsonResponse` views add no dependency,
 behave identically on Django 2.0 and 5.x, and are far likelier to be merged.
 
-Auth: a simple opaque token model plus an `Authorization: Token <key>` header.
-Session cookies work for a PWA but are awkward from native code. JWT/OAuth2 is
-overkill for a single-user hobby app.
+#### The split: two PRs, and the seam is risk
+
+Not size. The endpoints are additive and repetitive — three handlers tell a
+reviewer most of what the other five do — and they change nothing that already
+runs. The token model is the opposite: it needs a migration against the live
+production database and it adds a permanent credential to a site whose README
+already concedes it is probably vulnerable. That is the part worth isolating.
+
+| PR | Contents | Source | Tests |
+| --- | --- | --- | --- |
+| **3a** | The API: module, urlconf, all eight endpoints, session auth | ~270 | ~225 |
+| **3b** | `ApiToken` + migration + `POST /api/auth/token` — **deferred** | ~110 | ~100 |
+
+3a is one concern despite the line count: one new module, one new urlconf, and
+a single added line in `charactersorter/urls.py`. That last number is the one a
+dormant maintainer actually needs, because it answers "can this break what I
+already run" without reading the rest. If review balks at the size anyway, the
+fallback seam is read-vs-write — every `GET` first, then the mutations — not
+one PR per endpoint.
+
+#### Why 3b is deferred
+
+Tokens are speculative work for a goal this document does not commit to.
+Session cookies are only "awkward from native code", and native is "a later
+choice to re-confirm, not a settled goal" (see below). Meanwhile the token
+model carries the plan's only migration against the maintainer's live Postgres,
+and an opaque non-expiring bearer key with no rotation and an unthrottled
+issuance endpoint is a worse thing to add to this codebase than to most.
+
+Deferring is cheap and reversible: a token becomes one more way to populate
+`request.user` alongside the session check in `api_view`, and no endpoint,
+payload or ownership rule changes. Shipping a migration to production is not
+reversible.
+
+With session auth a client **can** do everything the API offers from the same
+origin in a browser — which is exactly the PR 2 PWA. It **cannot** be a native
+app, be hosted on another origin (`SameSite=Lax`, and no CORS configuration the
+fork can reach), or sync headlessly while logged out.
+
+Revisit if the maintainer signals they would take a migration, if the fork
+commits to native, or if the client ends up hosted off-origin.
+
+#### Endpoints as built in 3a
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/auth/token` | username + password → token |
 | `GET` `POST` | `/api/lists` | list / create `CharacterList`s |
 | `GET` `PATCH` `DELETE` | `/api/lists/<id>` | ranked chars, annotations, progress |
 | `GET` `POST` | `/api/lists/<id>/characters` | list / add `Character`s |
-| `PATCH` `DELETE` | `/api/characters/<id>` | edit / remove one |
+| `PATCH` `DELETE` | `/api/lists/<id>/characters/<char_id>` | edit / remove one |
 | `GET` | `/api/lists/<id>/next` | next comparison pair (+ image URLs) |
 | `POST` | `/api/lists/<id>/comparisons` | `{char1, char2, value, timestamp?}` |
-| `DELETE` | `/api/lists/<id>/comparisons/<rec_id>` | undo — **must** verify `rec.charlist_id == list_id` |
+| `DELETE` | `/api/lists/<id>/comparisons/<rec_id>` | undo |
 | `GET` | `/api/lists/<id>/graph` | Glicko rating / RD arrays |
 
-The `controller/` layer already returns plain Python data and needs **no
-changes** to back any of this. All the work is in `sorterinput/views.py`.
+Two deviations from the sketch above:
 
-Three properties of the existing code will shape the client (all documented in
-`CLAUDE.md`):
+- Characters are nested under their list instead of living at
+  `/api/characters/<id>`. A bare character id has no parent in the URL, so it
+  would need its own ownership check (`characterlist__owner=request.user`) —
+  a second authorization path to keep correct. Nested, every route goes
+  through the same `owned_list()` helper.
+- `POST /api/auth/token` is deferred with the rest of 3b.
 
-- **`SortRecord.timestamp` is `auto_now_add=True`**, so accepting a
-  client-supplied timestamp — needed for offline queueing — means overwriting it
-  after `save()`. Safe, because `compute_ratings` sorts by timestamp before
-  replaying.
+#### Authorization
+
+`owned_list(request, list_id)` is the only gate, and it carries PR 1's
+patterns: it resolves the URL's list against `request.user`, and every other id
+is then read *through* that list, so a foreign id raises `DoesNotExist` and
+becomes a 404 rather than relying on an `assert` that `python -O` strips.
+`DELETE /api/lists/<id>/comparisons/<rec_id>` gets its required
+`rec.charlist_id == list_id` check structurally, from
+`charlist.sortrecord_set.get(id=rec_id)`.
+
+Unlike `requires_list_owner`, there is no superuser bypass — narrower is the
+right default for a new surface, and it is one keyword to add back.
+
+`register_comparison` guards its char ids with an `assert`, so the comparison
+endpoint resolves `char1`/`char2` through the list itself before calling it.
+That holds whether or not PR 1 has merged.
+
+#### Error shape
+
+`{"error": "<sentence>"}`, plus `"fields": {name: [messages]}` when a
+`ModelForm` rejected the body. Codes: 400 malformed body or invalid fields,
+401 not authenticated, 403 CSRF (Django's own HTML response — status only),
+404 every not-found *and* every not-yours, 405 wrong method (empty body, with
+an `Allow` header, from `require_http_methods`). 404-for-not-yours is
+deliberate: distinguishing them would confirm another user's list exists.
+
+#### Client contract
+
 - **`get_next_comparison` is non-deterministic for Glicko.** It samples from a
-  softmax, so two `GET /next` calls return different pairs. Fine, because
-  `POST /comparisons` names `char1` and `char2` explicitly — but a client must
-  not assume it can re-fetch "the same" pending question.
+  softmax, so two `GET /next` calls return different pairs. A client must not
+  treat the pending question as re-fetchable; `POST /comparisons` names
+  `char1` and `char2` explicitly, so answer the pair you were handed and let
+  the next `GET` propose whatever it likes. A client that re-fetches on resume
+  simply gets a different, equally valid question.
+- **`timestamp` is optional on `POST /comparisons`** and must carry a UTC
+  offset — a naive value is a 400 rather than a silent misfile. It exists for
+  offline queueing: `SortRecord.timestamp` is `auto_now_add`, so the endpoint
+  overwrites it after `save()`. Safe, because `compute_ratings` replays in
+  timestamp order.
+- **Writes need `X-CSRFToken`.** The views are not `csrf_exempt`, since they
+  authenticate from the session.
 - **Every ranking request replays the entire history.** Acceptable for a page
-  load; it becomes the hot path when an app polls for comparisons. If it gets
-  slow, cache on `SortRecord` count + max timestamp — but do **not** reuse the
+  load; it becomes the hot path when an app polls `/next`. If it gets slow,
+  cache on `SortRecord` count + max timestamp — but do **not** reuse the
   per-request `dirty` flag, which is explicitly not valid across requests.
+- `/graph` returns real JSON arrays. `get_graph_info` hands back `json.dumps`'d
+  strings for the template, so the endpoint parses them once; this also
+  side-steps the `graph.html` XSS noted in `CLAUDE.md`.
+
+#### Merge order
+
+3a and PR 1 do not conflict at all — verified by a trial merge, which is clean
+and leaves all 18 tests passing under both `python` and `python -O`. 3a adds a
+module rather than editing `sorterinput/views.py`, and PR 1 never touches
+`charactersorter/urls.py`. So the two are independent, and either order works.
+
+PR 1 should still go first, for reasons that are not mechanical: it is the
+cheap signal test of whether the maintainer is reachable at all, and it closes
+the same holes on the HTML side. 3a assumes nothing from it — it re-derives
+every ownership check at its own call sites, so it is not left insecure if PR 1
+stalls.
 
 ## Native app vs PWA
 
