@@ -102,7 +102,11 @@ table.form th, table.form td { padding: 0.25rem; text-align: left; vertical-alig
         color: #555;
     }
     table.form input[type="text"], table.form select { width: 100%; }
-    /* A checkbox at its default size is a poor tap target directly under a
-       full-width text field, and this one deletes a character. */
+}
+
+/* A checkbox at its default size is a poor tap target for a finger, and this
+   one deletes a character. Keyed to the input device, not the width: a phone
+   in landscape is past 40em and still a phone. */
+@media (pointer: coarse) {
     table.form input[type="checkbox"] { width: 1.5rem; height: 1.5rem; }
 }
