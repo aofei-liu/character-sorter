@@ -228,7 +228,7 @@ gets the JSON 401 rather than an HTML 405.
 
 #### Merge order
 
-PR 1 has merged to this fork's `master`, and 3a rebases onto it cleanly — the
+PR 1 has merged to this fork's `main`, and 3a rebases onto it cleanly — the
 two never conflicted, because 3a adds a module instead of editing
 `sorterinput/views.py`, and PR 1 never touches `charactersorter/urls.py`. 3a
 also assumes nothing from PR 1: it re-derives every ownership check at its own

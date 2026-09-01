@@ -117,12 +117,12 @@ security checks, and `-O` strips them.
 
 ## Sending a PR upstream
 
-The fork's `master` carries `CLAUDE.md`, `ROADMAP.md`, and this file, so a
+The fork's `main` carries `CLAUDE.md`, `ROADMAP.md`, and this file, so a
 branch cut from it cannot go upstream as-is. Cut a second branch from upstream's
 actual head and cherry-pick only the source commits:
 
 ```bash
-git checkout -b <name>-upstream 45a897d   # or current upstream master
+git checkout -b <name>-upstream 45a897d   # or current upstream main
 git cherry-pick <source commits>
 git diff --name-only 45a897d HEAD          # must list only charactersorter/ files
 ```
