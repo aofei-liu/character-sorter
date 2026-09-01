@@ -1,12 +1,15 @@
 $(function(){
-    $('#undo_form').submit( function(event) {
-        // disable to avoid double submission
-        $('#undo_submit').attr('disabled', true);
-    });
+    function disableOnSubmit(selector) {
+        $(selector).submit( function(event) {
+            // disable to avoid double submission. Deferred, because a submit
+            // button that is already disabled contributes no name/value pair.
+            var buttons = $(this).find("button, input[type=submit]");
+            window.setTimeout(function() {
+                buttons.attr('disabled', true);
+            }, 0);
+        });
+    }
 
-    $('#sort_form').submit( function(event) {
-        // disable to avoid double submission
-        $('#sort_submit').attr('disabled', true);
-    });
-
+    disableOnSubmit('#undo_form');
+    disableOnSubmit('#sort_form');
 });

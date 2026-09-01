@@ -22,7 +22,7 @@
             {% endif %}
             <tr class={% cycle "row1" "row2" %}>
                 {% for field in form.visible_fields %}
-                <td>
+                <td data-label="{{ field.label|capfirst }}">
                     {# Include the hidden fields in the form #}
                     {% if forloop.first %}
                     {% for hidden in form.hidden_fields %}
@@ -42,7 +42,7 @@
 
 <form action="{% url 'sorterinput:editlist' charlist.id %}" method="post">
     {% csrf_token %}
-    {{ addform }}
+    {{ addform.as_p }}
 
     <input type="submit" value="Add!" />
 </form>

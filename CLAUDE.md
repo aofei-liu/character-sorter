@@ -325,9 +325,30 @@ would bury real changes in noise.
   variable key (`annotations|get_item:char.id`), since Django templates can't do
   `dict[key]`.
 - **Static/JS** is minimal on purpose: jQuery 3.3.1 from a CDN in `base.html`,
-  Plotly from a CDN in `graph.html`, and one 12-line `sort.js` whose only job is
-  disabling submit buttons to prevent double-submission. There is **no CSS at
-  all** and no stylesheet file anywhere in the repo.
+  Plotly from a CDN in `graph.html`, and one small `sort.js` whose only job is
+  disabling submit buttons to prevent double-submission. It defers that with
+  `setTimeout(..., 0)`: a submit button disabled during its own submit event is
+  excluded from the form data set, so disabling it synchronously would drop the
+  `sort` value the sort page depends on.
+- **CSS** is one hand-written file, `core/static/core/css/style.css`, linked
+  from `base.html`. There is no framework, no build step and no second
+  stylesheet — keep it that way, and keep the file small enough to read in one
+  go. Two patterns in it are load-bearing:
+  - The sort page answers a comparison with three `<button type="submit"
+    name="sort">` controls (values `1`, `-1`, `0`) styled as cards, rather than
+    radios plus a submit. One tap per comparison, and it still works with
+    JavaScript off.
+  - The formset tables stack into one card per row under `40em`. That relies on
+    each `<td>` carrying `data-label="{{ field.label|capfirst }}"`, which the
+    `::before` rule renders as the row's field name once the header is hidden.
+    `edit.html` and `editlists.html` must stay identical here.
+  - Names and fandoms are 200-char user input that need not contain a space, so
+    every surface that displays one has to be able to break it. `.container`
+    sets `overflow-wrap`, and the sort cards additionally need `min-width: 0`
+    on the flex item — a flex item otherwise refuses to shrink below its
+    longest word, which puts the whole page into horizontal scroll and undoes
+    the viewport tag. Check a long unbroken name at a narrow width before
+    changing the sort or view layout.
 
 ## Known issues and gotchas
 
@@ -362,14 +383,6 @@ names lol"). Use `json_script` or escape `<` when fixing.
 **`db.sqlite3` is tracked and empty.** It's a 0-byte stub with no tables. It is
 not a data source and not a usable database. Consider `git rm --cached`-ing it
 and adding it to `.gitignore`.
-
-**No `viewport` meta tag.** `core/templates/base.html` has no `<!DOCTYPE>`, no
-`<meta charset>`, and no `<meta name="viewport">`. On a phone this means the
-browser renders at desktop width and scales down. This is the single biggest
-cause of the site being unusable on mobile, and the cheapest thing to fix.
-
-**Deprecated markup.** `sort.html` uses `<font size="0">` tags (the `TODO` file
-wants these gone: "use css, get rid of font tag lol").
 
 **Migration history is messy.** `controller/` migrations 0001–0005 build an
 `InsertionSortController` model, tear it down, rename `InsertionSortRecord` →
