@@ -8,6 +8,7 @@ from functools import wraps
 
 from django import forms
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from django.forms.models import model_to_dict
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
@@ -19,6 +20,9 @@ import controller.models
 from .forms import MaybeAppendShowImages
 from .models import Character, CharacterList
 from .views import get_char_image
+
+# The only values process_record can read: it maps them to win/tie/loss.
+COMPARISON_VALUES = (-1, 0, 1)
 
 CharacterForm = forms.modelform_factory(Character, fields=["name", "fandom"])
 
@@ -46,13 +50,14 @@ def api_view(*methods):
     client must send X-CSRFToken.
     """
     def decorate(view):
-        @require_http_methods(list(methods))
+        checked = require_http_methods(list(methods))(view)
+
         @wraps(view)
         def wrapped(request, *args, **kwargs):
             if not request.user.is_authenticated:
                 return api_error(401, "Authentication required.")
             try:
-                return view(request, *args, **kwargs)
+                return checked(request, *args, **kwargs)
             except ApiError as err:
                 return err.response
             except (Http404, ObjectDoesNotExist):
@@ -90,14 +95,27 @@ def int_field(data, name):
     except (TypeError, ValueError):
         raise ApiError(400, "Field {} must be an integer.".format(name))
 
-def aware_datetime(value):
+def comparison_value(data):
+    value = int_field(data, "value")
+    if value not in COMPARISON_VALUES:
+        raise ApiError(400, "Field value must be one of -1, 0 or 1.")
+    return value
+
+def client_timestamp(value):
     """SortRecord.timestamp is auto_now_add, so a client-supplied one has to
-    be written over the record after save()."""
+    be written over the record after save().
+
+    A future one is refused because the Glicko maths measures elapsed days
+    from it; a negative interval takes the square root of a negative and
+    breaks every page that ranks the list until wall-clock time catches up.
+    """
     parsed = parse_datetime(value) if isinstance(value, str) else None
     if parsed is None:
         raise ApiError(400, "Field timestamp must be an ISO 8601 datetime.")
     if timezone.is_naive(parsed):
         raise ApiError(400, "Field timestamp must carry a UTC offset.")
+    if parsed > timezone.now():
+        raise ApiError(400, "Field timestamp must not be in the future.")
     return parsed
 
 def bind_form(form_cls, data, instance=None, partial=False):
@@ -226,11 +244,19 @@ def comparisons(request, list_id):
     # assert, and python -O strips asserts.
     char1 = charlist.character_set.get(id=int_field(data, "char1"))
     char2 = charlist.character_set.get(id=int_field(data, "char2"))
-    record = controller_for(charlist).register_comparison(
-        charlist, char1.id, char2.id, int_field(data, "value"))
-    if data.get("timestamp") is not None:
-        record.timestamp = aware_datetime(data["timestamp"])
-        record.save()
+    if char1.id == char2.id:
+        raise ApiError(400, "A character cannot be compared with itself.")
+    value = comparison_value(data)
+    stamp = (None if data.get("timestamp") is None
+             else client_timestamp(data["timestamp"]))
+    # Everything the body controls is validated above, so a rejected request
+    # leaves no half-formed record for a retrying client to duplicate.
+    with transaction.atomic():
+        record = controller_for(charlist).register_comparison(
+            charlist, char1.id, char2.id, value)
+        if stamp is not None:
+            record.timestamp = stamp
+            record.save()
     return JsonResponse(comparison_json(record), status=201)
 
 @api_view("DELETE")
