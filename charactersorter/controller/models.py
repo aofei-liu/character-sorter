@@ -30,10 +30,11 @@ class Controller(abc.ABC):
     def register_comparison(self, charlist, char1_id, char2_id, value):
         record = SortRecord()
         record.charlist = charlist
-        record.char1 = sorterinput.models.Character.objects.get(id=char1_id)
-        assert record.char1.characterlist == charlist
-        record.char2 = sorterinput.models.Character.objects.get(id=char2_id)
-        assert record.char2.characterlist == charlist
+        # Look the characters up through the list rather than globally: an
+        # id from another list must raise DoesNotExist, not depend on an
+        # assert, which is stripped under python -O.
+        record.char1 = charlist.character_set.get(id=char1_id)
+        record.char2 = charlist.character_set.get(id=char2_id)
         record.value = value
         record.save()
         self.dirty = True
