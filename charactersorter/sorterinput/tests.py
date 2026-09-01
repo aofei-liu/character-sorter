@@ -93,6 +93,18 @@ class PostBodyAuthorizationTest(TestCase):
         self.assertFalse(controller.models.SortRecord.objects.filter(
             pk=my_record.pk).exists())
 
+    def test_sortlist_rejects_a_character_from_another_list(self):
+        """register_comparison must not accept a foreign char id: the record
+        would render the victim's name back on the attacker's sort page."""
+        my_char = Character.objects.create(
+            characterlist=self.my_list, name="Bob", fandom="Elsewhere")
+        with self.assertRaises(Character.DoesNotExist):
+            self.client.post(
+                reverse("sorterinput:sortlist", args=(self.my_list.id,)),
+                {"char1": str(my_char.id), "char2": str(self.their_char.id),
+                 "sort": "1"})
+        self.assertEqual(controller.models.SortRecord.objects.count(), 0)
+
     def make_record(self, charlist, fandom):
         chars = [Character.objects.create(
             characterlist=charlist, name=name, fandom=fandom)
