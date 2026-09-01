@@ -78,7 +78,9 @@ def editcharlists(request):
             queryset=CharacterList.objects.filter(owner=request.user))
         addform = AddCharlistForm(request.POST)
         if addform.is_valid():
-            addform.save()
+            new_charlist = addform.save(commit=False)
+            new_charlist.owner = request.user
+            new_charlist.save()
             return HttpResponseRedirect(reverse(
                 'sorterinput:editcharlists'))
 
@@ -90,7 +92,7 @@ def editcharlists(request):
     else:
         modformset = ModifyCharlistFormset(
             queryset=CharacterList.objects.filter(owner=request.user))
-        addform = AddCharlistForm(initial={"owner": request.user})
+        addform = AddCharlistForm()
     context = {
         "modformset": modformset,
         "addform": addform,
@@ -133,10 +135,14 @@ def graphlist(request, list_id):
 def editlist(request, list_id):
     charlist = get_object_or_404(CharacterList, pk=list_id)
     if request.method == "POST":
-        modformset = ModifyCharFormset(request.POST)
+        modformset = ModifyCharFormset(
+            request.POST,
+            queryset=Character.objects.filter(characterlist__id=list_id))
         addform = AddCharForm(request.POST)
         if addform.is_valid():
-            addform.save()
+            char = addform.save(commit=False)
+            char.characterlist = charlist
+            char.save()
             return HttpResponseRedirect(reverse(
                 'sorterinput:editlist', args=(list_id,)))
 
@@ -148,7 +154,7 @@ def editlist(request, list_id):
     else:
         modformset = ModifyCharFormset(
             queryset=Character.objects.filter(characterlist__id=list_id))
-        addform = AddCharForm(initial={"characterlist": list_id})
+        addform = AddCharForm()
     context = {
         "charlist": charlist,
         "modformset": modformset,
@@ -212,7 +218,8 @@ def cachelistimages(request, list_id):
 @requires_list_owner
 def undo(request, list_id):
     lastsort = get_object_or_404(
-        controller.models.SortRecord, pk=int(request.POST["last"]))
+        controller.models.SortRecord, pk=int(request.POST["last"]),
+        charlist_id=list_id)
     lastsort.delete()
     return HttpResponseRedirect(reverse(
         'sorterinput:sortlist', args=(list_id,)))
