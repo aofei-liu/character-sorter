@@ -54,7 +54,7 @@ Sorting {{ charlist.title }} | Character Sorter
 <form id="undo_form" action="{% url 'sorterinput:undo' charlist.id %}" method="post">
     {% csrf_token %}
     <input type="hidden" name="last" id="last" value="{{ lastsort.id }}" />
-    <input type="submit" id="undo_submit" value="Undo last sort ({{ lastsort }})" />
+    <button type="submit" id="undo_submit">Undo last sort ({{ lastsort }})</button>
 </form>
 {% endif %}
 

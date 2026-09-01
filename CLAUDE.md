@@ -342,6 +342,13 @@ would bury real changes in noise.
     each `<td>` carrying `data-label="{{ field.label|capfirst }}"`, which the
     `::before` rule renders as the row's field name once the header is hidden.
     `edit.html` and `editlists.html` must stay identical here.
+  - Names and fandoms are 200-char user input that need not contain a space, so
+    every surface that displays one has to be able to break it. `.container`
+    sets `overflow-wrap`, and the sort cards additionally need `min-width: 0`
+    on the flex item — a flex item otherwise refuses to shrink below its
+    longest word, which puts the whole page into horizontal scroll and undoes
+    the viewport tag. Check a long unbroken name at a narrow width before
+    changing the sort or view layout.
 
 ## Known issues and gotchas
 

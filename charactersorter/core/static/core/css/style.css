@@ -11,6 +11,9 @@ body {
 .container {
     max-width: 55rem;
     margin: 0 auto;
+    /* Character names and fandoms are 200-char user input and need not
+       contain a space. */
+    overflow-wrap: break-word;
 }
 
 h1 { font-size: 1.5rem; }
@@ -33,6 +36,7 @@ input, select, textarea, button {
 button, input[type="submit"] {
     min-height: 2.75rem;
     padding: 0.5rem 1rem;
+    text-align: left;
 }
 
 /* Sort page: each choice is a whole tappable card, so answering a comparison
@@ -47,6 +51,8 @@ button, input[type="submit"] {
 
 .choices li {
     flex: 1 1 14rem;
+    /* Without this a flex item refuses to shrink below its longest word. */
+    min-width: 0;
     padding: 0.5rem;
 }
 
@@ -60,6 +66,7 @@ button, input[type="submit"] {
     background: #fff;
     font-size: 1.1rem;
     text-align: center;
+    overflow-wrap: anywhere;
     cursor: pointer;
 }
 
@@ -95,4 +102,7 @@ table.form th, table.form td { padding: 0.25rem; text-align: left; vertical-alig
         color: #555;
     }
     table.form input[type="text"], table.form select { width: 100%; }
+    /* A checkbox at its default size is a poor tap target directly under a
+       full-width text field, and this one deletes a character. */
+    table.form input[type="checkbox"] { width: 1.5rem; height: 1.5rem; }
 }
