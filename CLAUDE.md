@@ -413,7 +413,29 @@ would be reasonable if you're modernizing anyway.
 
 ## Git workflow
 
-- Work on a feature branch; push with `git push -u origin <branch-name>`.
+- Work on a feature branch; push with `git push -u origin <branch-name>` —
+  but **run `git remote -v` before every push, and name the remote
+  explicitly.** A session sourced from this fork comes up with `origin`
+  pointing at **upstream** (`jerrywu64`), not at the fork — verified
+  2026-09-02, when this container cloned with exactly that layout. So the
+  command above, run unchecked, aims fork work at the maintainer's default
+  branch.
+
+  Renaming the remotes does not fix it. The harness re-syncs `origin` to the
+  session's source repository, and a rename was observed reverting mid-session
+  between one push and the next. Add the fork under its own name and push to
+  that name every time:
+
+  ```
+  git remote add fork https://github.com/aofei-liu/character-sorter
+  git push -u fork <branch-name>
+  ```
+
+  A stop hook comparing `origin/<branch>` also reports the fork's whole
+  divergent history as "unpushed" whenever `origin` is upstream. That is a
+  false positive; pushing to satisfy it is the exact mistake this note exists
+  to prevent. GitHub is the last line of defence and it holds — a push to
+  `jerrywu64` is refused with a 403 — but do not rely on that.
 - Do not open a pull request unless explicitly asked.
 - Fork work lands on `main` by PR: branch → PR against `main` → merge. PRs 1-3
   all landed this way. Don't commit to `main` directly.
