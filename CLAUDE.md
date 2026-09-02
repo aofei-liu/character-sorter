@@ -10,9 +10,10 @@ repeatedly answer "which of these two is better?" until the app can produce a
 ranked order.
 
 This repo is a **fork of [jerrywu64/character-sorter](https://github.com/jerrywu64/character-sorter)**,
-which is deployed at <https://charsorter.lndyn.com/>. As of this writing the
-fork's `master` is at the same commit as upstream `master` (`45a897d`) — there
-is no divergence yet. Upstream has been dormant since 2018.
+which is deployed at <https://charsorter.lndyn.com/>. Upstream's default branch
+is `main`, still at `45a897d` — no code commits since 2018. This fork's `main`
+has diverged: it carries the fork-only docs plus PRs 1-3 (authorization fixes,
+responsive UI, JSON API).
 
 The fork exists to build a mobile-friendly version of the UI, which must read
 and write the **live database behind `charsorter.lndyn.com`** rather than a
@@ -391,27 +392,37 @@ would be reasonable if you're modernizing anyway.
 
 ## Git workflow
 
-- Development for this task happens on `claude/claude-md-mobile-app-b1obdp`.
-- Push with `git push -u origin <branch-name>`.
+- Work on a feature branch; push with `git push -u origin <branch-name>`.
 - Do not open a pull request unless explicitly asked.
-- `master` here tracks upstream. Keep fork-specific work on feature branches so
-  upstream can still be merged cleanly if it ever revives.
+- Fork work lands on `main` by PR: branch → PR against `main` → merge. PRs 1-3
+  all landed this way. Don't commit to `main` directly.
+- `main` has **diverged from upstream** and no longer tracks it. It carries the
+  fork-only docs (`CLAUDE.md`, `ROADMAP.md`, `CONTRIBUTING.md`) plus every
+  merged change. Anything going upstream needs its own branch cut from
+  upstream's head — see below.
 
 ### Opening a PR against upstream
 
 A cross-fork PR to `jerrywu64/character-sorter` **cannot be opened from a Claude
-Code session** that was started from this fork. Two independent local gates stop
-it, and neither is GitHub refusing:
+Code session** that was started from this fork. Three independent local gates
+stop it, and none of them is GitHub refusing:
 
 1. **Session repo scope.** Only the repos a session was sourced from are in
    scope. `create_pull_request` with owner `jerrywu64` fails the scope check
    before any API call: `Access denied: repository "jerrywu64/character-sorter"
    is not configured for this session.`
-2. **The auto-mode classifier.** The obvious fix — `add_repo` for
-   `jerrywu64/character-sorter` — is itself blocked in `auto` permission mode
-   (`Blocked by classifier`). There is no settings file in this repo or the
-   container, so no allowlist rule is in play; the classifier decides alone, and
-   it is not clear a `permissions.allow` entry would override it.
+2. **`add_repo` cannot attach it.** The obvious fix is blocked twice over.
+   First the auto-mode classifier refuses the call (`Blocked by classifier`);
+   there is no settings file in this repo or the container, so the classifier
+   decides alone. Even with that approved, the tool itself refuses: `cross-tier
+   adds are not supported in v1 ... session already has repos from owner(s)
+   [aofei-liu]`. The second failure is the durable one — no permission grant
+   gets past it.
+3. **Sourcing a session from upstream doesn't help either.** The escape that
+   error suggests — spawn a new session with `jerrywu64/character-sorter` as
+   its initial source — was tried on 2026-09-01 and came back with read-only
+   auth; it could not create the PR. The user opened PR #10 by hand from the
+   compare link. That attempt cost a full extra session, so don't repeat it.
 
 Verified once (2026-09-01): `list_repos` reports `jerrywu64/character-sorter` as
 public with `can_push: true` for the authenticated user `aofei-liu`, so the
@@ -422,7 +433,7 @@ and don't retry the blocked call or route around it.
 **So the workflow is: prepare and verify everything, then hand the user a
 compare link and let them click Create.**
 
-- Cut the branch from upstream's actual head, not from fork `master`, and keep
+- Cut the branch from upstream's actual head, not from fork `main`, and keep
   fork-only docs (`CLAUDE.md`, `ROADMAP.md`, `CONTRIBUTING.md`) out of it.
 - Verify on Django 2.0.6 (Path A) before handing it over, per "Running the code".
 - Push the branch to `aofei-liu/character-sorter` — that part works normally.
@@ -430,7 +441,7 @@ compare link and let them click Create.**
   paste without reformatting:
 
   ```
-  https://github.com/jerrywu64/character-sorter/compare/master...aofei-liu:character-sorter:<branch>?expand=1
+  https://github.com/jerrywu64/character-sorter/compare/main...aofei-liu:character-sorter:<branch>?expand=1
   ```
 
 - Tell them the expected file count and commit count so they can spot a wrong
