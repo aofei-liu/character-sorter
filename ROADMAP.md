@@ -407,12 +407,26 @@ history, and `DELETE` endpoints work.
 
 | Phase | Deliverable | Buildable in a cloud session |
 | --- | --- | --- |
-| P0 | `:client` + its tests | Yes, with what is already installed |
+| P0 | `:client` + its tests | **Done** (2026-09-02) |
 | P1 | `:app`: login and the sort loop | No — needs the SDK |
 | P2 | Rankings screen, in-run undo | No |
 | P3 | Offline queue (Room + backdated `timestamp`), images, graph | No |
 
 P0 is the whole of the risk and none of the toolchain, so start there.
+
+**P0 landed on 2026-09-02**: `android/` is a Gradle build with a `:client`
+module (Kotlin/JVM, OkHttp, kotlinx.serialization) covering the handshake, the
+cookie jar, the CSRF interceptor and the five endpoints the prototype needs.
+32 MockWebServer tests pass on JDK 21 with no Android SDK, and two read-only
+`LiveSmokeTest` probes — skipped unless `CHARSORTER_LIVE=1` — confirm the real
+site's 401 envelope and login page against the client's own parsing. See
+[`android/README.md`](android/README.md). Nothing has been written to the live
+database: no credentials exist in a cloud session.
+
+Two things P0 could not do, and P1 inherits: the local Django instance under
+"Open risks" was still not stood up, so nothing has exercised a real `201` from
+`POST /comparisons`; and the CSRF-retry path is proven against MockWebServer
+only, never against a genuinely stale token.
 
 ## Open risks
 
