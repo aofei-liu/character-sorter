@@ -24,31 +24,28 @@ Sorting {{ charlist.title }} | Character Sorter
     {% csrf_token %}
     <input type="hidden" name="char1" id="char1" value="{{ char1.id }}" />
     <input type="hidden" name="char2" id="char2" value="{{ char2.id }}" />
-    <ul>
-        <li> <input type="radio" name="sort" id="sort1" value="1" />
-            <label for="sort1">
+    <ul class="choices">
+        <li>
+            <button type="submit" class="choice" name="sort" id="sort1" value="1">
                 {{ char1.name }} from {{ char1.fandom }}
                 {% if img1 %}
-                <img src="{{ img1.thumbnailLink }}" />
-                <font size="0">{{ img1.contextLink }}</font>
+                <img src="{{ img1.thumbnailLink }}" alt="" />
+                <span class="fineprint">{{ img1.contextLink }}</span>
                 {% endif %}
-            </label>
+            </button>
         </li>
-        <li> <input type="radio" name="sort" id="sort-1" value="-1" />
-            <label for="sort-1">
+        <li>
+            <button type="submit" class="choice" name="sort" id="sort-1" value="-1">
                 {{ char2.name }} from {{ char2.fandom }}
                 {% if img2 %}
-                <img src="{{ img2.thumbnailLink }}" />
-                <font size="0">{{ img2.contextLink }}</font>
+                <img src="{{ img2.thumbnailLink }}" alt="" />
+                <span class="fineprint">{{ img2.contextLink }}</span>
                 {% endif %}
-            </label>
+            </button>
         </li>
-        <li> <input type="radio" name="sort" id="sort0" value="0" />
-            <label for="sort0">
-                Same</label></li>
     </ul>
-
-    <input type="submit" id="sort_submit" value="Submit!" />
+    <button type="submit" class="choice choice-same" name="sort" id="sort0" value="0">
+        Same</button>
 </form>
 
 {% endif %}
@@ -57,15 +54,15 @@ Sorting {{ charlist.title }} | Character Sorter
 <form id="undo_form" action="{% url 'sorterinput:undo' charlist.id %}" method="post">
     {% csrf_token %}
     <input type="hidden" name="last" id="last" value="{{ lastsort.id }}" />
-    <input type="submit" id="undo_submit" value="Undo last sort ({{ lastsort }})" />
+    <button type="submit" id="undo_submit">Undo last sort ({{ lastsort }})</button>
 </form>
 {% endif %}
 
 {% if img1 %}
-<p><font size="0">Images powered by Google Custom Search (tm)</font></p>
-<p><font size="0">Page loading slowly? Try
+<p class="fineprint">Images powered by Google Custom Search (tm)</p>
+<p class="fineprint">Page loading slowly? Try
     <a href="{% url 'sorterinput:cache' charlist.id %}">caching images</a>,
-    which may take a few minutes.</a></font></p>
+    which may take a few minutes.</p>
 {% endif %}
 
 <p><a href="{% url 'sorterinput:viewlist' charlist.id %}">Back to
