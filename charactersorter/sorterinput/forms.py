@@ -17,13 +17,14 @@ ModifyCharlistFormset = forms.modelformset_factory(
     extra=0)
 
 class AddCharForm(forms.ModelForm):
+    """characterlist is set by the view from the URL, not submitted by the
+    client, so it can't be pointed at someone else's list."""
     class Meta:
         model = Character
-        fields = ["characterlist", "name", "fandom"]
-        widgets = {"characterlist": forms.HiddenInput()}
+        fields = ["name", "fandom"]
 
 class AddCharlistForm(forms.ModelForm):
+    """owner is set by the view from request.user; same reasoning."""
     class Meta:
         model = CharacterList
-        fields = MaybeAppendShowImages(["owner", "title", "controller_type"])
-        widgets = {"owner": forms.HiddenInput()}
+        fields = MaybeAppendShowImages(["title", "controller_type"])
