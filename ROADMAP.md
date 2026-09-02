@@ -308,9 +308,111 @@ publicly. Native therefore *requires* PR 3a — but not 3b; see "Why 3b is
 deferred".
 
 Given the app's shape — forms, text lists, one image pair at a time — a
-responsive site plus a PWA manifest delivers most of the value for a fraction of
-the effort, and PR 2 alone yields a usable phone experience with zero
-infrastructure. Treat native as a later choice to re-confirm, not a settled goal.
+responsive site plus a PWA manifest would deliver most of the value for a
+fraction of the effort, and PR 2 alone already yields a usable phone experience
+with zero infrastructure.
+
+**Native was chosen anyway, on 2026-09-02, for independence.** A PWA's manifest
+and service worker must be served same-origin, so they would live in upstream's
+repo and ship on the maintainer's deploy schedule — the exact dependency `#12`
+was merged to escape. Native is the only shape the fork can own end to end, and
+the auth handshake it needs is verified working (see "Why 3b is deferred").
+The cost is accepted: a real toolchain and more code for the same screens.
+
+## The Android client
+
+Scope of the **prototype**: log in, pick a list, answer comparisons, see the
+ranking, against the live site on a real phone. Deliberately excluded until it
+works — offline queueing, images, the graph, and any list or character editing.
+
+### Module split, and why it is the load-bearing decision
+
+The client lives in `android/` in this fork, as two Gradle modules:
+
+| Module | Contents | Builds with |
+| --- | --- | --- |
+| `:client` | API client, models, auth handshake. Pure JVM, no Android APIs. | JDK + Gradle alone |
+| `:app` | Compose UI, single Activity. | Android SDK |
+
+The split exists because of what a cloud session actually has. Verified
+2026-09-02: JDK 21 and Gradle 8.14.3 are pre-installed, but there is **no
+Android SDK**, `ANDROID_HOME` is unset, and Google's Maven hosts are not on the
+network allowlist. So an APK cannot be built here without adding
+`dl.google.com` and `maven.google.com` to the environment's **Custom** list and
+installing the SDK from a setup script.
+
+Keeping every risky piece — the login handshake, CSRF, error shapes, the
+non-deterministic `/next` — in a pure-JVM module means all of it is testable in
+a cloud session today with MockWebServer, and only the UI needs a machine with
+Android Studio. Do not let Android types leak into `:client`; that property is
+the whole point.
+
+### The auth handshake
+
+Verified against the live site, and the one part worth writing carefully:
+
+1. `GET /login/` — stores the `csrftoken` cookie and returns a form carrying
+   `csrfmiddlewaretoken`.
+2. `POST /login/` form-encoded with `username`, `password`,
+   `csrfmiddlewaretoken`, and a `Referer` of the site's own origin. Success is
+   a 302 plus a `sessionid` cookie; a 200 that returns the form again is a
+   failed login. Do not follow redirects automatically, or the two are hard to
+   tell apart.
+3. Every later write sends `X-CSRFToken` from the cookie jar and the same
+   `Referer` — Django checks Referer strictly on HTTPS.
+
+An OkHttp `CookieJar` plus one interceptor covers steps 3 for the whole client.
+Persist the `sessionid` cookie, never the password, and re-run the handshake on
+a 401. Django's default session lifetime is two weeks, so treat re-login as a
+normal path rather than an error. The site's README disclaims its own security;
+use a password that is not reused anywhere else.
+
+### Error mapping
+
+The API's error shape is not uniform, and a client that assumes JSON breaks:
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| 401 | JSON | Not authenticated — re-run the handshake |
+| 403 | **HTML** | CSRF token stale — refresh it and retry once |
+| 400 | JSON, maybe `fields` | Bad body; surface `fields` per input |
+| 404 | HTML or JSON | Not found *or* not yours — do not distinguish |
+
+### Client behavior the API forces
+
+- **Hold the pair from `/next`; never re-fetch it.** Glicko samples from a
+  softmax, so a second call returns a different question. Answer what you were
+  handed, then fetch the next one.
+- **Undo is in-memory only.** The `rec_id` needed for
+  `DELETE /comparisons/<id>` arrives only in the `201` from the client's own
+  `POST`, so undo works within a run and dies with the process. The durable fix
+  is the `GET /comparisons` endpoint noted above — the prototype's only
+  upstream dependency, and it is optional.
+- **Do not poll.** Every ranking and every `/next` replays the list's entire
+  comparison history. One request per answer, no background refresh.
+
+### Test plan
+
+`:client` unit tests against MockWebServer for the login handshake, the CSRF
+header, the 403-HTML path, 400 field errors, and the comparison POST body. Then
+a local Django instance (Path B) for integration, before anything touches the
+network.
+
+Live smoke tests are authorized **only** against the `fe3h husbandos` and
+`fe3h waifus` lists, which the owner confirmed on 2026-09-02 are disposable.
+Never against the Extensive Character List — it holds the real comparison
+history, and `DELETE` endpoints work.
+
+### Phasing
+
+| Phase | Deliverable | Buildable in a cloud session |
+| --- | --- | --- |
+| P0 | `:client` + its tests | Yes, with what is already installed |
+| P1 | `:app`: login and the sort loop | No — needs the SDK |
+| P2 | Rankings screen, in-run undo | No |
+| P3 | Offline queue (Room + backdated `timestamp`), images, graph | No |
+
+P0 is the whole of the risk and none of the toolchain, so start there.
 
 ## Open risks
 
