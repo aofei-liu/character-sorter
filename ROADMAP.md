@@ -22,10 +22,14 @@ Three possible shapes:
 | Shape | Verdict |
 | --- | --- |
 | Fork connects to upstream's Postgres remotely | **Avoid.** Requires the maintainer to expose 5432 or grant a tunnel — a bigger security ask than merging a PR. Worse, the fork's migrations would mutate his live schema through a shared `django_migrations` table: one stray `makemigrations` breaks production. |
-| Mobile UI merged upstream, owner uses the deployed site | **Best first step.** Smallest change, no infrastructure, no credentials. Cost: every future tweak needs the maintainer to merge. |
-| JSON API merged upstream once, fork becomes a pure client | **Best end state.** One focused PR, then the fork iterates independently forever. Required for any native app. |
+| Mobile UI merged upstream, owner uses the deployed site | **Done** (`#11`). Smallest change, no infrastructure, no credentials. Cost: every future tweak needs the maintainer to merge. |
+| JSON API merged upstream once, fork becomes a pure client | **Done** (`#12`). One focused PR, then the fork iterates independently forever. Required for any native app. |
 
-The last two are complementary; the plan below does both, in order.
+Both landed on 2026-09-02. **Merged is not deployed**, though: what runs at
+`charsorter.lndyn.com` is whatever the maintainer has deployed, so neither the
+responsive UI nor `/api/` is reachable there until he does, and until then the
+fork is no closer to the live database than before. Check the live site, not
+upstream `main`, before building a client on the API.
 
 ### Consequence: no modern Django in anything sent upstream
 
@@ -46,11 +50,12 @@ removes the problem it solved.
 
 ## PR sequence
 
-Each step is independently useful and independently mergeable. Upstream has been
-dormant since 2018, so every PR should be small, additive, and default to
-existing behavior — that maximizes the chance of a review.
+Each step is independently useful and independently mergeable. Every PR was
+kept small, additive, and defaulting to existing behavior, to maximize the
+chance of a review from a maintainer who had not committed since 2019.
+**All three merged upstream on 2026-09-02 as `#10`, `#11` and `#12`.**
 
-### PR 1 — Authorization fixes *(implemented; not yet sent upstream)*
+### PR 1 — Authorization fixes *(merged upstream, `#10`)*
 
 Close the POST-body holes documented under "Known issues" in `CLAUDE.md`:
 
@@ -63,7 +68,8 @@ Close the POST-body holes documented under "Known issues" in `CLAUDE.md`:
   `assert` that `python -O` strips.
 
 Pure bug fix, no behavior change for honest users; ~35 lines of source. Also the
-lowest-stakes way to find out whether the maintainer is still reachable.
+lowest-stakes way to find out whether the maintainer was still reachable —
+which is exactly what sending it first established.
 
 **This is a prerequisite for PR 3.** Through HTML forms these holes are bad;
 through a JSON API they are trivially scriptable.
@@ -137,8 +143,14 @@ origin in a browser — which is exactly the PR 2 PWA. It **cannot** be a native
 app, be hosted on another origin (`SameSite=Lax`, and no CORS configuration the
 fork can reach), or sync headlessly while logged out.
 
-Revisit if the maintainer signals they would take a migration, if the fork
-commits to native, or if the client ends up hosted off-origin.
+**One of those triggers has partly fired.** The maintainer merged three PRs
+including the API itself, so he is demonstrably reachable and willing — most of
+the case for asking. A migration is still a larger ask than code (it runs
+against his live database, which the fork cannot test), and the other two
+triggers are untouched: native is unconfirmed, and a same-origin client needs
+no token. So the deferral now rests on its own merits rather than on doubt
+about the maintainer. Settle it before building a client — the answer decides
+where that client can be hosted.
 
 #### Endpoints as built in 3a
 
@@ -234,19 +246,10 @@ two never conflicted, because 3a adds a module instead of editing
 also assumes nothing from PR 1: it re-derives every ownership check at its own
 call sites, and its tests pass on bare upstream `45a897d` without PR 1 present.
 
-**Nothing has been sent upstream yet.** Every PR so far has been
-fork-internal. So 3a is not the right first contact: this document makes PR 1
-the cheap signal test of whether the maintainer is reachable at all, and PR 2
-the highest value-per-line change. Spending the one likely round of review
-attention on the largest and most speculative diff — an API whose own
-justification is deferred, since tokens were dropped for want of a confirmed
-native client — inverts that. Send PR 1, then PR 2; hold 3a until the
-maintainer has answered something.
-
-The upstream branch is ready when that time comes. Per `CONTRIBUTING.md`,
-cherry-picking the two source commits onto `45a897d` is clean, leaves only
-`charactersorter/` files, and passes the suite under both `python` and
-`python -O`.
+They went upstream in that order — PR 1 first as the cheap signal test of
+whether the maintainer was reachable at all, then PR 2, then 3a once he had
+answered — and all three merged. Staggering cost little and kept the largest,
+most speculative diff from being his first impression.
 
 ## Native app vs PWA
 
@@ -261,10 +264,14 @@ infrastructure. Treat native as a later choice to re-confirm, not a settled goal
 
 ## Open risks
 
-- **Upstream responsiveness.** No commits since 2018. PRs 1 and 2 leave the fork
-  dependent on the maintainer merging every future tweak; PR 3 is what buys
-  independence. Worth sending PR 1 early purely as a signal test — a fork that
-  cannot reach the database has no path to the goal.
+- **Deployment, not merge, is the gate now.** Upstream responsiveness was the
+  headline risk and it resolved: three PRs merged. But that changed a git
+  repository, not a running site. Until the maintainer deploys,
+  `charsorter.lndyn.com` serves the old UI with no `/api/`. Verify against the
+  live site.
+- **Iteration still routes through him.** The API buys independence for
+  *clients*; changing the API itself is another PR and another deploy. Batch
+  server-side changes accordingly.
 - **Secrets.** `local_settings.py` is tracked despite `.gitignore` and carries a
   `SECRET_KEY` and Postgres password. Rotating them is a prerequisite for any
   real deployment of this fork.

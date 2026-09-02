@@ -11,9 +11,16 @@ ranked order.
 
 This repo is a **fork of [jerrywu64/character-sorter](https://github.com/jerrywu64/character-sorter)**,
 which is deployed at <https://charsorter.lndyn.com/>. Upstream's default branch
-is `main`, still at `45a897d` — no code commits since 2018. This fork's `main`
-has diverged: it carries the fork-only docs plus PRs 1-3 (authorization fixes,
-responsive UI, JSON API).
+is `main`. It was dormant from 2019 until 2026-09-02, when it squash-merged
+this fork's three source PRs: `#10` authorization fixes, `#11` responsive UI,
+`#12` JSON API. (Verified by fetching the repo — see "Opening a PR against
+upstream".)
+
+`45a897d` is the last commit the two shared. Upstream squashed each PR into one
+commit, so the two now agree on *content* but share no history past that point;
+a future `git pull` from upstream would see already-applied changes as fresh
+edits to the same lines. This fork's `main` additionally carries the fork-only
+docs.
 
 The fork exists to build a mobile-friendly version of the UI, which must read
 and write the **live database behind `charsorter.lndyn.com`** rather than a
@@ -303,8 +310,8 @@ would bury real changes in noise.
 ## Conventions
 
 - **Change scope:** one concern per PR, roughly 100-200 lines. This matters most
-  for PRs sent to `jerrywu64/character-sorter` — upstream has been dormant since
-  2018, and a small single-purpose diff is the only kind likely to get read.
+  for PRs sent to `jerrywu64/character-sorter`. Upstream took three such PRs in
+  a row after seven dormant years, which is the evidence for keeping to it.
   Prefer framework facilities over hand-rolled equivalents. Keep prose out of
   the code: non-obvious architecture belongs in this file or `ROADMAP.md`, not
   in a block comment.
@@ -423,6 +430,13 @@ stop it, and none of them is GitHub refusing:
    its initial source — was tried on 2026-09-01 and came back with read-only
    auth; it could not create the PR. The user opened PR #10 by hand from the
    compare link. That attempt cost a full extra session, so don't repeat it.
+
+**Reading upstream is a different matter, and it works.** The GitHub tools are
+scope-blocked, but `WebFetch` against `https://github.com/jerrywu64/...` returns
+the public repo fine — branch selector, directory listings, commit log. Use it
+to confirm what actually landed instead of recording upstream state as hearsay;
+that is how the `#10`/`#11`/`#12` merges and the `main` rename were
+established. It is read-only, so it opens nothing and routes around nothing.
 
 Verified once (2026-09-01): `list_repos` reports `jerrywu64/character-sorter` as
 public with `can_push: true` for the authenticated user `aofei-liu`, so the

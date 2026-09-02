@@ -9,9 +9,9 @@ See [`CLAUDE.md`](CLAUDE.md) for what the code is and how it runs, and
 ## Change scope
 
 - **One concern per PR, roughly 100-200 lines.** If a change does two things,
-  it is two PRs. This matters most upstream: that repo has been dormant since
-  2018, and a small single-purpose diff is the only kind likely to get read. You
-  get about one round of questions, so spend it well.
+  it is two PRs. This matters most upstream, and it worked: three small
+  single-purpose PRs merged there in a row after seven dormant years. Assume
+  about one round of questions per PR, and spend it well.
 - **Prefer framework facilities to hand-rolled equivalents.** Django already
   does most of this. A `queryset=` argument beats a manual ownership loop.
 - **Remove the attack surface rather than validating it.** PR 1 dropped the
