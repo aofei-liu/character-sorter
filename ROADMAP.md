@@ -25,11 +25,39 @@ Three possible shapes:
 | Mobile UI merged upstream, owner uses the deployed site | **Done** (`#11`). Smallest change, no infrastructure, no credentials. Cost: every future tweak needs the maintainer to merge. |
 | JSON API merged upstream once, fork becomes a pure client | **Done** (`#12`). One focused PR, then the fork iterates independently forever. Required for any native app. |
 
-Both landed on 2026-09-02. **Merged is not deployed**, though: what runs at
-`charsorter.lndyn.com` is whatever the maintainer has deployed, so neither the
-responsive UI nor `/api/` is reachable there until he does, and until then the
-fork is no closer to the live database than before. Check the live site, not
-upstream `main`, before building a client on the API.
+Both landed on 2026-09-02, and both are **deployed** — verified the same day
+against the running site. `charsorter.lndyn.com` serves the responsive UI and
+all eight `/api/` endpoints, so the fork can now read and write the live
+database as a client. That was the whole point of the sequence below.
+
+### Verifying the live site
+
+Merged is not deployed, so this check runs against the running host, never
+against upstream `main`. It needs no credentials: `api_view` tests
+authentication before anything else, so an anonymous request to a deployed
+endpoint returns the JSON 401, while an undeployed path falls through to
+Django's HTML 404. The contrast is what makes a 401 evidence of a real route
+rather than a catch-all.
+
+    $ curl -s -o /dev/null -w '%{http_code} %{content_type}\n' \
+          https://charsorter.lndyn.com/api/lists
+    401 application/json
+
+On 2026-09-02 all eight endpoints answered `401 application/json`, while
+`/api/bogus` and `/api/auth/token` answered `404 text/html` — the latter
+confirming 3b is absent, as intended. The home page carries the viewport tag
+and `/static/core/css/style.css`, so `#11` is live too.
+
+A cloud session cannot reach the host under the default **Trusted** network
+access: the egress proxy answers `403` to `CONNECT`, and `WebFetch` is bound by
+the same policy, so neither is a workaround for the other. Add `*.lndyn.com` to
+a **Custom** allowlist on the environment, keeping the default package-manager
+list checked, before expecting any of this to run. The change takes effect on a
+session that is already running.
+
+Note the host is `charsorter.lndyn.com`. A phone browser elides the leading
+`char` in the URL bar, which is a good way to waste a round trip on a name that
+does not resolve.
 
 ### Consequence: no modern Django in anything sent upstream
 
@@ -139,18 +167,28 @@ payload or ownership rule changes. Shipping a migration to production is not
 reversible.
 
 With session auth a client **can** do everything the API offers from the same
-origin in a browser — which is exactly the PR 2 PWA. It **cannot** be a native
-app, be hosted on another origin (`SameSite=Lax`, and no CORS configuration the
-fork can reach), or sync headlessly while logged out.
+origin in a browser — which is exactly the PR 2 PWA. It **cannot** be hosted on
+another origin in a browser (`SameSite=Lax`, and no CORS configuration the fork
+can reach), or sync headlessly while logged out.
 
-**One of those triggers has partly fired.** The maintainer merged three PRs
-including the API itself, so he is demonstrably reachable and willing — most of
-the case for asking. A migration is still a larger ask than code (it runs
-against his live database, which the fork cannot test), and the other two
-triggers are untouched: native is unconfirmed, and a same-origin client needs
-no token. So the deferral now rests on its own merits rather than on doubt
-about the maintainer. Settle it before building a client — the answer decides
-where that client can be hosted.
+An earlier revision of this file also listed "cannot be a native app". That was
+wrong, and correcting it is what lets 3b stay deferred. `SameSite` and CORS are
+browser enforcement; a native client with its own cookie jar is not a browser.
+Verified against the live site on 2026-09-02: `GET /login/` sets a `csrftoken`
+cookie (`Secure`, `Path=/`, one-year `Max-Age`) and returns a form carrying
+`csrfmiddlewaretoken`. So a native client logs in with a form POST and then
+sends the cookie value as `X-CSRFToken` on writes. The one non-obvious extra
+requirement is Django's strict Referer check on HTTPS, satisfied by setting
+`Referer` to the site's own origin.
+
+**Those triggers are now settled, and none of them fires.** The maintainer
+merged three PRs including the API itself, so he is demonstrably reachable —
+most of the case for asking. But native does not need a token (above), and a
+same-origin client never did. A migration remains a larger ask than code, since
+it runs against his live database and the fork cannot test it first. So 3b
+stays deferred on evidence rather than on doubt about the maintainer. Revisit
+it only for a client that must sync while logged out, which nothing in this
+plan requires.
 
 #### Endpoints as built in 3a
 
@@ -172,7 +210,15 @@ Two deviations from the sketch above:
   would need its own ownership check (`characterlist__owner=request.user`) —
   a second authorization path to keep correct. Nested, every route goes
   through the same `owned_list()` helper.
-- `POST /api/auth/token` is deferred with the rest of 3b.
+- `POST /api/auth/token` is deferred with the rest of 3b. It 404s on the
+  deployed site, as it should.
+
+One gap is worth naming, because a client hits it immediately: **there is no
+`GET` on `/comparisons`.** A record id comes back only in the `201` from the
+client's own `POST`, so a client that restarts cannot undo the last comparison
+— the HTML page's Undo button has no API equivalent across process restarts.
+A read-only `GET /api/lists/<id>/comparisons` is small, additive and the
+natural fourth upstream PR.
 
 #### Authorization
 
@@ -229,7 +275,10 @@ gets the JSON 401 rather than an HTML 405.
   timestamp overwrite) share a transaction — so a client that retries after a
   400 does not end up with a duplicate.
 - **Writes need `X-CSRFToken`.** The views are not `csrf_exempt`, since they
-  authenticate from the session.
+  authenticate from the session. A write without it is rejected by
+  `CsrfViewMiddleware` *before* the view runs, so it returns Django's HTML 403
+  page and not the JSON error envelope — confirmed live on 2026-09-02. A client
+  that parses every error body as JSON breaks on exactly this case.
 - **Every ranking request replays the entire history.** Acceptable for a page
   load; it becomes the hot path when an app polls `/next`. If it gets slow,
   cache on `SortRecord` count + max timestamp — but do **not** reuse the
@@ -255,7 +304,8 @@ most speculative diff from being his first impression.
 
 A native Android client cannot talk to Postgres directly: that would mean
 shipping database credentials in an extractable binary and exposing the port
-publicly. Native therefore *requires* PR 3.
+publicly. Native therefore *requires* PR 3a — but not 3b; see "Why 3b is
+deferred".
 
 Given the app's shape — forms, text lists, one image pair at a time — a
 responsive site plus a PWA manifest delivers most of the value for a fraction of
@@ -264,11 +314,15 @@ infrastructure. Treat native as a later choice to re-confirm, not a settled goal
 
 ## Open risks
 
-- **Deployment, not merge, is the gate now.** Upstream responsiveness was the
-  headline risk and it resolved: three PRs merged. But that changed a git
-  repository, not a running site. Until the maintainer deploys,
-  `charsorter.lndyn.com` serves the old UI with no `/api/`. Verify against the
-  live site.
+- **Deployment is no longer a gate.** Upstream responsiveness was the headline
+  risk; it resolved with three merged PRs, and the deploy followed the same
+  day. Re-verify after any future server-side change rather than assuming a
+  merge reached the host — the check is cheap and needs no credentials.
+- **No local instance yet.** The API is live and its `DELETE`s work, so the
+  first client written against it should talk to a local server, not to the
+  maintainer's production data. Nothing in this repo runs on a modern
+  interpreter without the uncommittable Path B edits, so standing one up is
+  the real prerequisite for client work.
 - **Iteration still routes through him.** The API buys independence for
   *clients*; changing the API itself is another PR and another deploy. Batch
   server-side changes accordingly.

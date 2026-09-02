@@ -14,7 +14,9 @@ which is deployed at <https://charsorter.lndyn.com/>. Upstream's default branch
 is `main`. It was dormant from 2019 until 2026-09-02, when it squash-merged
 this fork's three source PRs: `#10` authorization fixes, `#11` responsive UI,
 `#12` JSON API. (Verified by fetching the repo — see "Opening a PR against
-upstream".)
+upstream".) All three are **deployed** as well as merged, confirmed the same
+day against the running site; `ROADMAP.md` records the check and how to repeat
+it.
 
 `45a897d` is the last commit the two shared. Upstream squashed each PR into one
 commit, so the two now agree on *content* but share no history past that point;
@@ -297,6 +299,18 @@ imports `base_settings`, sets `SECRET_KEY`/`DEBUG`/`DATABASES`, and strips
 `debug_toolbar` from `INSTALLED_APPS`/`MIDDLEWARE` if it isn't installed.
 Don't commit that file.
 
+### Reaching the live site
+
+Deployed behavior is checked against `charsorter.lndyn.com` directly, and no
+credentials are needed for the useful part — see "Verifying the live site" in
+`ROADMAP.md`. The host is **not** reachable from a cloud session under the
+default **Trusted** network access: the egress proxy answers `403` to
+`CONNECT`, and `WebFetch` fails the same way, since it is bound by the same
+policy. The fix is the environment's own **Custom** allowlist (`*.lndyn.com`,
+with the default package-manager list left checked), which applies to a session
+already running. Do not try to route around a proxy `403` — it is an egress
+policy, not a misconfiguration.
+
 ### Linting
 
 `requirements.txt` pins `pylint`, `pylint-django`, `isort`. There is no config
@@ -407,6 +421,12 @@ would be reasonable if you're modernizing anyway.
   fork-only docs (`CLAUDE.md`, `ROADMAP.md`, `CONTRIBUTING.md`) plus every
   merged change. Anything going upstream needs its own branch cut from
   upstream's head — see below.
+- The three `claude/*-upstream` branches are **spent**. Each was cut from
+  upstream's head for a cross-fork PR, all three merged as `#10`/`#11`/`#12`,
+  and every file they touched is now byte-identical in `main`. They are not
+  ancestors of `main` — upstream squashed them and they never shared its
+  history — so an ancestry check will call them unmerged. Compare file content,
+  not `git merge-base`, before concluding anything is outstanding.
 
 ### Opening a PR against upstream
 
