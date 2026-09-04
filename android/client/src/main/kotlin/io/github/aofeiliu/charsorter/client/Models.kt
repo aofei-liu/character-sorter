@@ -108,7 +108,21 @@ enum class Verdict(val wireValue: Int) {
     CHAR2_WINS(-1);
 
     companion object {
-        fun fromWireValue(value: Int): Verdict = entries.first { it.wireValue == value }
+        /**
+         * The verdict a stored `value` records, or null for anything else.
+         *
+         * `SortRecord.value` is a plain `IntegerField` and only the API
+         * validates the range, so a record written by another client can
+         * hold a value this enum has no name for.
+         */
+        fun fromWireValueOrNull(value: Int): Verdict? =
+            entries.firstOrNull { it.wireValue == value }
+
+        /** As [fromWireValueOrNull], but for a value already known to be valid. */
+        fun fromWireValue(value: Int): Verdict = fromWireValueOrNull(value)
+            ?: throw IllegalArgumentException(
+                "Not a comparison value: $value. Expected -1, 0 or 1."
+            )
     }
 }
 
