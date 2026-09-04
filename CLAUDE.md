@@ -330,8 +330,11 @@ policy, not a misconfiguration.
 ### Linting
 
 `requirements.txt` pins `pylint`, `pylint-django`, `isort`. There is no config
-file (`.pylintrc`, `setup.cfg`, `tox.ini` are all absent) and no CI. The
-codebase carries inline pylint pragmas (e.g.
+file (`.pylintrc`, `setup.cfg`, `tox.ini` are all absent), and no CI covers
+`charactersorter/`: the only workflow, `.github/workflows/android-client.yml`,
+is scoped to `android/`, because the pinned Django stack neither imports on a
+current Python nor migrates on SQLite. The codebase carries inline pylint
+pragmas (e.g.
 `# pylint: disable-msg=too-many-ancestors` at the top of `sorterinput/views.py`),
 so pylint was clearly used interactively. Follow the existing style rather than
 introducing a formatter — the code is not Black-formatted and reformatting it
