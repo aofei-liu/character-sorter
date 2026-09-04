@@ -17,11 +17,33 @@ handshake, CSRF, the non-uniform error shapes — testable in a cloud session
 that has no SDK and cannot download one (`dl.google.com` is off the network
 allowlist).
 
+## Consuming `:client` from `:app`
+
+Two constraints the module cannot enforce on its own, both of which bite at
+`:app`'s first compile rather than here:
+
+- **OkHttp reaches `:app`'s compile classpath, deliberately.** `OkHttpClient`,
+  `HttpUrl` and `CookieJar` all appear in `:client`'s public API — the client
+  constructor takes an `OkHttpClient`, and `cookieJar` hands out a
+  `SessionCookieJar`, which *is* a `CookieJar`. So okhttp is declared `api`,
+  not `implementation`; reverting that makes `client.cookieJar.save()`
+  uncompilable for any consumer.
+- **`java.time` needs API 26 or desugaring.** `submitComparison` takes an
+  `OffsetDateTime`, because the API demands a UTC offset and refuses a future
+  timestamp — a weaker type would push that check to the server and cost a
+  round trip. On `minSdk` below 26, `:app` must turn on core library
+  desugaring:
+
+  ```kotlin
+  compileOptions { isCoreLibraryDesugaringEnabled = true }
+  dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.2") }
+  ```
+
 ## Building and testing
 
 ```bash
 cd android
-./gradlew :client:test        # 32 unit tests against MockWebServer
+./gradlew :client:test        # 35 unit tests against MockWebServer
 ./gradlew :client:build
 ```
 
