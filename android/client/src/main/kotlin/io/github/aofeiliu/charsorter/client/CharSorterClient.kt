@@ -187,7 +187,7 @@ class CharSorterClient(
         return try {
             decode(body)
         } catch (err: Exception) {
-            throw UnexpectedResponseException(response.code, body)
+            throw UnexpectedResponseException(response.code, body, err)
         }
     }
 

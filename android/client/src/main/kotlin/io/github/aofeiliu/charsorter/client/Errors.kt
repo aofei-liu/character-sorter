@@ -12,7 +12,8 @@ import kotlinx.serialization.Serializable
  * has an empty body. Nothing here parses a body it was not promised, so
  * [message] falls back to a fixed sentence whenever the body is not JSON.
  */
-sealed class ApiException(message: String) : IOException(message)
+sealed class ApiException(message: String, cause: Throwable? = null) :
+    IOException(message, cause)
 
 /** 401. The session is missing or expired — re-run the login handshake. */
 class NotAuthenticatedException(message: String) : ApiException(message)
@@ -41,9 +42,17 @@ class NotFoundException(message: String) : ApiException(message)
 class MethodNotAllowedException(val allow: String?) :
     ApiException("Method not allowed." + (allow?.let { " Allowed: $it" } ?: ""))
 
-/** Any other status, or a body that did not decode. */
-class UnexpectedResponseException(val code: Int, val body: String) :
-    ApiException("Unexpected HTTP $code response.")
+/**
+ * Any other status, or a body that did not decode.
+ *
+ * [cause] carries the decode failure when there was one; [body] is retained
+ * either way, since an unexpected status often has no parseable body at all.
+ */
+class UnexpectedResponseException(
+    val code: Int,
+    val body: String,
+    cause: Throwable? = null
+) : ApiException("Unexpected HTTP $code response.", cause)
 
 /**
  * The login handshake did not end in a session.

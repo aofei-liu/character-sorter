@@ -4,6 +4,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -105,6 +106,9 @@ class ErrorMappingTest {
         val error = assertFailsWith<UnexpectedResponseException> { client.lists() }
 
         assertEquals(200, error.code)
+        // The decode failure is the only account of *why* the body was
+        // unusable, so it has to survive as the cause.
+        assertNotNull(error.cause)
     }
 
     @Test
