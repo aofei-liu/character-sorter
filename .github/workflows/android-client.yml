@@ -1,0 +1,42 @@
+name: android client
+
+# Scoped to android/ on purpose. The Django app pins Django 2.0.6, which does
+# not import on a modern Python, and its controller/0002 migration cannot be
+# applied on SQLite -- so a job covering charactersorter/ would be red from its
+# first run. See CLAUDE.md, "Running the code".
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-client.yml'
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-client.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: ':client build + tests'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The wrapper jar is a committed binary nothing else in this repo checks.
+      - uses: gradle/actions/wrapper-validation@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # LiveSmokeTest stays skipped: it needs CHARSORTER_LIVE=1 and reaches the
+      # deployed site, which CI has no business doing on every push.
+      - name: Build and test :client
+        working-directory: android
+        run: ./gradlew --no-daemon :client:build

@@ -35,6 +35,9 @@ Python 3.7. Planning, sequencing and rationale live in
 
 ```
 requirements.txt              Pinned 2018-era deps (see "Running the code")
+android/                      Fork-only Android client (see android/README.md)
+  settings.gradle.kts         Declares :client only; :app needs an SDK we lack
+  client/                     Pure-JVM Kotlin API client + MockWebServer tests
 TODO                          Upstream author's freeform backlog
 README.md                     Two sentences; the security disclaimer is serious
 charactersorter/
@@ -187,6 +190,19 @@ settings. When `IMAGE_SEARCH_KEY == ""`, `sorterinput/forms.py`
 feature can't be turned on. The uncached path is slow and will crash the page if
 the credentials are wrong — hence the "cache images" link on the sort page.
 
+## The Android client
+
+`android/` is a separate Gradle build (JDK 21, Gradle 8.14.3, wrapper
+committed) and shares nothing with the Django app but the HTTP API. It is
+fork-only and must never be sent upstream. `android/README.md` covers building
+and using it; `ROADMAP.md` covers why it exists and what comes next.
+
+The one rule worth repeating here: **`:client` may not depend on an Android or
+AndroidX artifact.** No Android SDK can be installed in a cloud session
+(`dl.google.com` is off the network allowlist), so an Android type anywhere in
+that module makes the whole thing untestable here. `:app` is deliberately
+absent from `settings.gradle.kts` until there is a machine that can build it.
+
 ## Settings
 
 Three-file split, deliberately:
@@ -314,8 +330,11 @@ policy, not a misconfiguration.
 ### Linting
 
 `requirements.txt` pins `pylint`, `pylint-django`, `isort`. There is no config
-file (`.pylintrc`, `setup.cfg`, `tox.ini` are all absent) and no CI. The
-codebase carries inline pylint pragmas (e.g.
+file (`.pylintrc`, `setup.cfg`, `tox.ini` are all absent), and no CI covers
+`charactersorter/`: the only workflow, `.github/workflows/android-client.yml`,
+is scoped to `android/`, because the pinned Django stack neither imports on a
+current Python nor migrates on SQLite. The codebase carries inline pylint
+pragmas (e.g.
 `# pylint: disable-msg=too-many-ancestors` at the top of `sorterinput/views.py`),
 so pylint was clearly used interactively. Follow the existing style rather than
 introducing a formatter — the code is not Black-formatted and reformatting it
