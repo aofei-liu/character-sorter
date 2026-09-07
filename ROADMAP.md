@@ -428,6 +428,47 @@ Two things P0 could not do, and P1 inherits: the local Django instance under
 `POST /comparisons`; and the CSRF-retry path is proven against MockWebServer
 only, never against a genuinely stale token.
 
+### P1 decisions (2026-09-07)
+
+Settled before any `:app` code is written, so the next session starts from a
+spec rather than re-deriving it. No code exists yet.
+
+**Scope: prototype only.** Log in, pick a list, answer comparisons, view the
+ranking. Explicitly out — images, the graph, list/character editing, and the
+offline queue. Those are P2/P3; folding them in now would widen the first
+`:app` diff past what is reviewable.
+
+**`:client` needs no changes for P1.** Its surface — `login`, `lists`,
+`nextComparison`, `submitComparison`, `deleteComparison`, `ranking`,
+`cookieJar.save()/restore()`, `isLoggedIn` — already covers the prototype.
+Undo stays in-run only; the `GET /comparisons` endpoint that would let it
+survive a restart is still deferred and is not a P1 dependency.
+
+**Toolchain lives on the WSL box, under `~`.** The SDK is installed with
+`cmdline-tools` + `sdkmanager` into a user directory — no `sudo`, no system
+package. This is possible here because the box's network reaches
+`dl.google.com` and Google's Maven; the "No — needs the SDK" cells in the
+Phasing table were written for cloud sessions, where those hosts are off the
+allowlist, and do not apply to this machine. `android/settings.gradle.kts`
+gains `google()` in both repository blocks and `include(":app")`.
+
+**Delivery: sideload first, emulator for iteration.** The target is a debug
+APK (`./gradlew :app:assembleDebug`) copied to a physical phone — the "real
+phone" goal, and it needs no emulator or USB passthrough. An emulator is also
+stood up on the WSL box for fast build-and-look cycles: `/dev/kvm` is present,
+so it is KVM-accelerated, and it needs neither a GPU nor WSLg —
+`-gpu swiftshader_indirect` (software rendering) and `-no-window` (headless,
+screenshot via `adb exec-out screencap`) both work, so WSLg GPU flakiness
+cannot block it.
+
+**`minSdk = 26`, `compileSdk = 34`, `applicationId
+io.github.aofeiliu.charsorter`.** `minSdk 26` (Android 8.0) is the floor at
+which `java.time` ships in the platform runtime, so `:client`'s
+`OffsetDateTime` in `submitComparison` needs no core-library desugaring — one
+fewer moving part, at the cost of pre-2017 devices, which the owner does not
+use. `compileSdk` is the API level the module compiles against and is
+independent of that floor. The app id matches the `:client` package namespace.
+
 ## Open risks
 
 - **Deployment is no longer a gate.** Upstream responsiveness was the headline
