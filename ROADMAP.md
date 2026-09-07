@@ -394,14 +394,20 @@ The API's error shape is not uniform, and a client that assumes JSON breaks:
 ### Test plan
 
 `:client` unit tests against MockWebServer for the login handshake, the CSRF
-header, the 403-HTML path, 400 field errors, and the comparison POST body. Then
-a local Django instance (Path B) for integration, before anything touches the
-network.
+header, the 403-HTML path, 400 field errors, and the comparison POST body — 35
+of them, all offline. Then `LocalServerIntegrationTest` against a local Django
+instance (Path B), gated on `CHARSORTER_LOCAL` the way the smoke tests are
+gated on `CHARSORTER_LIVE`, for the two paths a mock can only imitate: a real
+`201` from `POST /comparisons` decoded and undone, and the 403 → refresh →
+retry driven by a genuinely stale `csrftoken`. Both were run green on
+2026-09-06; `android/README.md` has the command and the env vars.
 
 Live smoke tests are authorized **only** against the `fe3h husbandos` and
 `fe3h waifus` lists, which the owner confirmed on 2026-09-02 are disposable.
 Never against the Extensive Character List — it holds the real comparison
-history, and `DELETE` endpoints work.
+history, and `DELETE` endpoints work. The same rule binds
+`LocalServerIntegrationTest`: it writes and deletes records, so it must point
+at `127.0.0.1`, never at the deployed host.
 
 ### Phasing
 
@@ -417,16 +423,21 @@ P0 is the whole of the risk and none of the toolchain, so start there.
 **P0 landed on 2026-09-02**: `android/` is a Gradle build with a `:client`
 module (Kotlin/JVM, OkHttp, kotlinx.serialization) covering the handshake, the
 cookie jar, the CSRF interceptor and the five endpoints the prototype needs.
-32 MockWebServer tests pass on JDK 21 with no Android SDK, and two read-only
+35 MockWebServer tests pass on JDK 21 with no Android SDK, and two read-only
 `LiveSmokeTest` probes — skipped unless `CHARSORTER_LIVE=1` — confirm the real
 site's 401 envelope and login page against the client's own parsing. See
-[`android/README.md`](android/README.md). Nothing has been written to the live
-database: no credentials exist in a cloud session.
+[`android/README.md`](android/README.md). `.github/workflows/android-client.yml`
+runs the build and the offline tests on every push that touches `android/`.
+Nothing has been written to the live database.
 
-Two things P0 could not do, and P1 inherits: the local Django instance under
-"Open risks" was still not stood up, so nothing has exercised a real `201` from
-`POST /comparisons`; and the CSRF-retry path is proven against MockWebServer
-only, never against a genuinely stale token.
+**The two gaps P0 left are now closed (2026-09-06).** A local Django instance
+was stood up on Path B (`Django==4.2.16` on Python 3.11, SQLite), and
+`LocalServerIntegrationTest` — seven tests, gated on `CHARSORTER_LOCAL` — runs
+the real `CharSorterClient` against it: the login handshake, a real `201` from
+`POST /comparisons` decoded into a `Comparison` and undone, a backdated
+`timestamp` round-trip, and the 403 → token-refresh → retry path against a
+`csrftoken` that Django genuinely rejects rather than an enqueued 403. All
+seven pass. The Path B edits stay uncommitted, per `CLAUDE.md`.
 
 ## Open risks
 
@@ -434,11 +445,13 @@ only, never against a genuinely stale token.
   risk; it resolved with three merged PRs, and the deploy followed the same
   day. Re-verify after any future server-side change rather than assuming a
   merge reached the host — the check is cheap and needs no credentials.
-- **No local instance yet.** The API is live and its `DELETE`s work, so the
-  first client written against it should talk to a local server, not to the
-  maintainer's production data. Nothing in this repo runs on a modern
-  interpreter without the uncommittable Path B edits, so standing one up is
-  the real prerequisite for client work.
+- **Local instance is reproducible but not turnkey.** One was stood up on
+  2026-09-06 (see the P0 note above) and `LocalServerIntegrationTest` runs
+  against it, so client work is no longer blocked on it. But it lives in
+  uncommittable Path B edits plus a scratch `dev_sqlite_settings` module —
+  `CLAUDE.md` "Running the code" carries the recipe. Anyone picking this up
+  rebuilds it from there; there is no committed `make dev` shortcut, and
+  adding one would mean committing the Path B changes, which must not happen.
 - **Iteration still routes through him.** The API buys independence for
   *clients*; changing the API itself is another PR and another deploy. Batch
   server-side changes accordingly.

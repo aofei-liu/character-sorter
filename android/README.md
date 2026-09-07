@@ -47,6 +47,9 @@ cd android
 ./gradlew :client:build
 ```
 
+Two suites are gated behind env vars and skip by default, so a bare
+`:client:test` stays offline.
+
 `LiveSmokeTest` is skipped unless `CHARSORTER_LIVE=1` is set. It makes two
 read-only, unauthenticated requests to the deployed site and needs
 `*.lndyn.com` on the environment's network allowlist:
@@ -54,6 +57,25 @@ read-only, unauthenticated requests to the deployed site and needs
 ```bash
 CHARSORTER_LIVE=1 ./gradlew :client:test --tests '*LiveSmokeTest*'
 ```
+
+`LocalServerIntegrationTest` (seven tests) is skipped unless `CHARSORTER_LOCAL`
+is set. It runs the real client against a **local** Django instance — never the
+deployed host, because it writes and deletes records — to cover what a mock
+cannot: a genuine `201` from `POST /comparisons` decoded and undone, a backdated
+`timestamp` round-trip, and the 403 → refresh → retry path against a `csrftoken`
+Django actually rejects. Stand the server up per `CLAUDE.md` ("Running the
+code", Path B), then:
+
+```bash
+# server on 127.0.0.1:8000 with a superuser that owns a Glicko list
+CHARSORTER_LOCAL=1 ./gradlew :client:test --tests '*LocalServerIntegrationTest*'
+```
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `CHARSORTER_LOCAL` | unset → skip | any value enables the suite |
+| `CHARSORTER_LOCAL_URL` | `http://127.0.0.1:8000/` | base URL of the local server |
+| `CHARSORTER_LOCAL_USER` / `_PASS` | `dev` / `devpass` | an account owning a Glicko list |
 
 ## Using the client
 
