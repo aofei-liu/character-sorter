@@ -237,8 +237,9 @@ So there are two paths, and you should know which one you're on:
 pyenv/conda in the default remote container (`python3.10`–`3.13` only), so this
 generally means Docker.
 
-**Path B — modernize, for local development only.** Verified working:
-`Django 4.2.16` + current `numpy`/`scipy` on Python 3.11, with **two** changes:
+**Path B — modernize, for local development only.** Verified working
+2026-09-06: `Django==4.2.16` + current `numpy`/`scipy` on Python 3.11
+(also fine on 3.12), with **two** source changes:
 
 1. `charactersorter/urls.py` uses two removed APIs:
    - `from django.conf.urls import url` — removed in Django 4.0. Replace with
@@ -248,13 +249,19 @@ generally means Docker.
      2.1. Replace with
      `auth_views.LoginView.as_view(template_name="core/login.html")` and
      `auth_views.LogoutView.as_view(next_page="/")`.
+     `urls.py` also does `import debug_toolbar` unconditionally under
+     `if settings.DEBUG:` — wrap it in `try/except ImportError` if you run
+     with `DEBUG = True` and no `debug_toolbar` installed.
 2. `controller/migrations/0002_auto_20180712_0001.py` — see the migration
    landmine below.
 
 With both applied, `manage.py check` is clean (only `models.W042`
-`DEFAULT_AUTO_FIELD` warnings) and **all 7 tests pass**. Nothing else in the
-codebase needed touching. `django-debug-toolbar` and `psycopg2` are the only
-other deps and both have current releases.
+`DEFAULT_AUTO_FIELD` warnings) and **all 19 tests pass** (6 `controller`, 5
+`sorterinput.tests`, 8 `sorterinput.test_api`). Nothing else in the codebase
+needed touching. Beyond Django/numpy/scipy the app imports `requests` (in
+`sorterinput/views.py`, for image search), so a bare Path B venv needs it too;
+`django-debug-toolbar` and `psycopg2` are the only other pinned deps and both
+have current releases.
 
 > **Do not commit these two changes as part of a feature branch.** They are a
 > local convenience for running the code on a modern interpreter. The upstream
@@ -284,12 +291,20 @@ never surfaced upstream because production ran PostgreSQL, where the
 Consequences: `manage.py migrate` **and** `manage.py test` (which builds a
 fresh test DB) both fail on SQLite from a clean slate.
 
-Two fixes:
+Three fixes:
 
 - **Proper fix (do this if you're modernizing):** delete the two `RemoveField`
   operations from `controller/migrations/0002`. The `DeleteModel` operations
   that follow drop those tables anyway, so the end state is identical. Verified:
-  `migrate` succeeds and all 7 tests pass afterward.
+  `migrate` succeeds and all tests pass afterward.
+- **Settings-only fix (leaves the tree untouched, used 2026-09-06):** in the
+  scratch settings module set `MIGRATION_MODULES = {"controller": None}`, then
+  create the schema with `manage.py migrate --run-syncdb` (the `--run-syncdb`
+  matters: without it an app whose migrations are disabled gets *no* tables
+  from a plain `migrate`). `manage.py test` already passes `--run-syncdb`
+  internally, so this fixes the test runner too. `controller`'s end-state
+  schema is identical either way — its migrations only build a model up and
+  tear it back down.
 - **Workaround (leaves migration history untouched):**
   `manage.py migrate controller 0001 && manage.py migrate --fake controller 0002 && manage.py migrate`.
   This gets a working dev DB but does **not** fix `manage.py test`, which
@@ -302,18 +317,24 @@ Run everything from the `charactersorter/` directory (where `manage.py` lives):
 ```bash
 python manage.py check
 python manage.py migrate
-python manage.py test                    # 7 tests: 6 in controller, 1 in sorterinput
+python manage.py test                    # 19 tests: 6 controller, 5 sorterinput.tests, 8 test_api
 python manage.py test controller         # just the algorithm tests
 python manage.py runserver
 python manage.py createsuperuser
 ```
 
 `local_settings.py` points at PostgreSQL (`charactersorter` db, `charsorter`
-user). The remote container has the `psql` *client* but no server, so for
-local work you'll want a SQLite override — a scratch settings module that
-imports `base_settings`, sets `SECRET_KEY`/`DEBUG`/`DATABASES`, and strips
-`debug_toolbar` from `INSTALLED_APPS`/`MIDDLEWARE` if it isn't installed.
-Don't commit that file.
+user). There is usually no Postgres server for local work, so you'll want a
+SQLite override — a scratch settings module that imports `base_settings`, sets
+`SECRET_KEY`/`DEBUG`/`DATABASES` (SQLite), strips `debug_toolbar` from
+`INSTALLED_APPS`/`MIDDLEWARE` if it isn't installed, and sets
+`MIGRATION_MODULES = {"controller": None}` for the landmine above. Point Django
+at it with `--settings=<module>` (or `DJANGO_SETTINGS_MODULE`) and put it
+somewhere off the tree — `*local_settings.py` and `*prod_settings.py` are
+gitignored but a bare `scratch_settings.py` is not. **Don't commit that file,
+and don't commit the Path B `urls.py` edits with it.** This is the setup the
+Android client's `LocalServerIntegrationTest` runs against
+(`android/README.md`).
 
 ### Reaching the live site
 
