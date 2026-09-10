@@ -469,6 +469,43 @@ fewer moving part, at the cost of pre-2017 devices, which the owner does not
 use. `compileSdk` is the API level the module compiles against and is
 independent of that floor. The app id matches the `:client` package namespace.
 
+### P1 progress (2026-09-10): toolchain installed
+
+Step 1 of P1 — stand up the build toolchain on the WSL box — is done. No
+`:app` code exists yet; the next step is wiring `:app` into the Gradle build.
+
+Everything is under `~/opt`, installed without `sudo`:
+
+| Component | Version | Path |
+| --- | --- | --- |
+| JDK (Temurin) | 21.0.12.1 | `~/opt/jdk-21` |
+| Android `cmdline-tools` | 12.0 | `~/opt/android-sdk` |
+| `platform-tools` | 37.0.1 | |
+| `platforms;android-34` | rev 3 | |
+| `build-tools;34.0.0` | 34.0.0 | |
+| `emulator` | 37.1.11 | |
+| `system-images;android-34;google_apis;x86_64` | — | AVD `charsorter34` (Pixel 6) |
+
+`~/opt/android-env.sh` exports `JAVA_HOME`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`
+and `PATH`; `~/.bashrc` sources it. Non-interactive shells (including anything a
+Claude Code Bash call runs) do **not** get it — `~/.bashrc` returns early for
+those — so a script must `. ~/opt/android-env.sh` explicitly. Footprint is
+~5.9 GB (5.5 GB SDK, 346 MB JDK).
+
+Validated: the Gradle wrapper (8.14.3) downloaded and ran `:client:test` green
+on the new JDK.
+
+Two corrections to the P1 decisions above:
+
+- **KVM was not usable out of the box.** `/dev/kvm` is present but is
+  `root:kvm` mode `0660`, and the login user was not in the `kvm` group, so
+  `emulator -accel-check` failed. Fixed with `sudo gpasswd -a $USER kvm` (the
+  one step in P1 that needed `sudo`). After that, `-accel-check` reports "KVM
+  (version 12) is installed and usable".
+- **The group change does not reach an already-running shell.** A session
+  whose shell started before the `gpasswd` must wrap emulator commands in
+  `sg kvm -c '...'`; any new WSL terminal picks the group up at login.
+
 ## Open risks
 
 - **Deployment is no longer a gate.** Upstream responsiveness was the headline
