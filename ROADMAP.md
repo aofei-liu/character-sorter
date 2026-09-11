@@ -732,6 +732,18 @@ Three unrelated papercuts, independent and pick-up-anytime:
   Snackbar text, so "which field" is lost.
 - **Long titles crowd the header.** A long list title squeezes the "Lists"
   button on the sort screen.
+- **The ranking screen has no retry.** A failed load leaves `ranking` null,
+  which that screen renders as a spinner forever; the only way out is backing
+  out to the list picker and re-entering. The sort screen grew a Retry branch
+  when the duplicate-comparison bug was fixed — this is the same pattern, and
+  the same three lines.
+
+A note on where these keep coming from: the duplicate-comparison bug fixed in
+this PR lived in `AppViewModel`'s state machine, which is exactly the "risky
+logic" the module split was meant to keep in `:client`, where it would have
+been testable. `:app` has no tests and cannot be verified in any session here.
+Logic that can be stated as a rule about requests and responses belongs on the
+`:client` side of the line.
 
 ### Deferred: the offline queue
 
