@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -174,9 +175,10 @@ fun ConfirmDeleteDialog(title: String, body: String, onConfirm: () -> Unit, onDi
                 colors = ButtonDefaults.buttonColors(
                     containerColor = CharSorterColor.Destructive,
                     contentColor = CharSorterColor.OnDestructive
-                )
+                ),
+                contentPadding = PaddingValues(horizontal = 26.dp, vertical = 12.dp)
             ) {
-                Text("Delete", style = CharSorterType.ButtonPrimarySmall)
+                Text("Delete", style = CharSorterType.ButtonPrimarySmall, maxLines = 1)
             }
         }
     }
@@ -221,9 +223,10 @@ private fun DialogCancelButton(onClick: () -> Unit) {
         onClick = onClick,
         shape = CharSorterShape.Pill,
         border = BorderStroke(1.dp, CharSorterColor.NeutralBorder.copy(alpha = 0.55f)),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.NeutralText)
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.NeutralText),
+        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp)
     ) {
-        Text("Cancel", style = CharSorterType.ButtonPrimarySmall)
+        Text("Cancel", style = CharSorterType.ButtonPrimarySmall, maxLines = 1)
     }
 }
 
@@ -234,6 +237,7 @@ private fun DialogConfirmButton(label: String, enabled: Boolean, onClick: () -> 
         enabled = enabled,
         shape = CharSorterShape.Pill,
         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, disabledContainerColor = Color.Transparent),
+        contentPadding = PaddingValues(horizontal = 26.dp, vertical = 12.dp),
         modifier = Modifier.background(
             brush = if (enabled) {
                 Brush.linearGradient(listOf(CharSorterColor.AccentLight, CharSorterColor.AccentDark))
@@ -246,7 +250,8 @@ private fun DialogConfirmButton(label: String, enabled: Boolean, onClick: () -> 
         Text(
             label,
             style = CharSorterType.ButtonPrimarySmall,
-            color = if (enabled) CharSorterColor.OnAccent else CharSorterColor.DisabledText
+            color = if (enabled) CharSorterColor.OnAccent else CharSorterColor.DisabledText,
+            maxLines = 1
         )
     }
 }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -97,9 +98,10 @@ fun EditListScreen(
                 onClick = onBack,
                 shape = CharSorterShape.Pill,
                 border = BorderStroke(1.dp, CharSorterColor.AccentDark.copy(alpha = 0.55f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.Link)
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.Link),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
             ) {
-                Text("Lists", style = CharSorterType.ButtonSecondary)
+                Text("Lists", style = CharSorterType.ButtonSecondary, maxLines = 1)
             }
         }
         Row(modifier = Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -120,6 +122,7 @@ fun EditListScreen(
                 enabled = !busy,
                 shape = CharSorterShape.Pill,
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 44.dp)
@@ -128,7 +131,12 @@ fun EditListScreen(
                         shape = CharSorterShape.Pill
                     )
             ) {
-                Text("Add character", style = CharSorterType.ButtonPrimarySmall, color = CharSorterColor.OnAccent)
+                Text(
+                    "Add character",
+                    style = CharSorterType.ButtonPrimarySmall,
+                    color = CharSorterColor.OnAccent,
+                    maxLines = 1
+                )
             }
             ByScoreChip(selected = byScore, enabled = !busy, onClick = { onSetSort(!byScore) })
         }

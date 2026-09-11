@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ButtonDefaults
@@ -59,9 +60,10 @@ fun SortScreen(
                 onClick = onBack,
                 shape = CharSorterShape.Pill,
                 border = BorderStroke(1.dp, CharSorterColor.AccentDark.copy(alpha = 0.55f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.Link)
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.Link),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
             ) {
-                Text("Lists", style = CharSorterType.ButtonSecondary)
+                Text("Lists", style = CharSorterType.ButtonSecondary, maxLines = 1)
             }
         }
         Row(
@@ -141,12 +143,13 @@ fun SortScreen(
                         shape = CharSorterShape.Pill,
                         border = BorderStroke(1.dp, CharSorterColor.NeutralBorder.copy(alpha = 0.65f)),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.NeutralText),
+                        contentPadding = PaddingValues(horizontal = 34.dp, vertical = 12.dp),
                         modifier = Modifier
                             .align(Alignment.CenterHorizontally)
                             .heightIn(min = 44.dp)
                             .padding(top = 16.dp, bottom = 6.dp)
                     ) {
-                        Text("Same", style = CharSorterType.ButtonTie)
+                        Text("Same", style = CharSorterType.ButtonTie, maxLines = 1)
                     }
                 }
             }
