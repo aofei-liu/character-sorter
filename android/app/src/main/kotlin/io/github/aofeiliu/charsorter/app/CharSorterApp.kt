@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.aofeiliu.charsorter.app.ui.EditListScreen
 import io.github.aofeiliu.charsorter.app.ui.ListPickerScreen
 import io.github.aofeiliu.charsorter.app.ui.LoginScreen
 import io.github.aofeiliu.charsorter.app.ui.RankingScreen
@@ -35,6 +36,8 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                         busy = state.busy,
                         onSort = viewModel::openForSorting,
                         onViewRanking = viewModel::openForRanking,
+                        onEdit = viewModel::openForEditing,
+                        onCreateList = viewModel::createList,
                         onLogout = viewModel::logout
                     )
                     is Screen.Sorting -> SortScreen(
@@ -57,6 +60,22 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                     is Screen.Ranking -> RankingScreen(
                         list = screen.list,
                         ranking = state.ranking,
+                        onBack = viewModel::backToLists
+                    )
+                    is Screen.EditList -> EditListScreen(
+                        list = screen.list,
+                        characters = state.characters,
+                        busy = state.busy,
+                        onAddCharacter = { name, fandom ->
+                            viewModel.addCharacter(screen.list, name, fandom)
+                        },
+                        onUpdateCharacter = { id, name, fandom ->
+                            viewModel.updateCharacter(screen.list, id, name, fandom)
+                        },
+                        onDeleteCharacter = { viewModel.deleteCharacter(screen.list, it) },
+                        onRenameList = { viewModel.renameList(screen.list, it) },
+                        onDeleteList = { viewModel.deleteList(screen.list) },
+                        onRetry = { viewModel.loadCharacters(screen.list) },
                         onBack = viewModel::backToLists
                     )
                 }
