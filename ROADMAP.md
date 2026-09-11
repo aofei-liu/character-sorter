@@ -410,7 +410,7 @@ history, and `DELETE` endpoints work.
 | P0 | `:client` + its tests | **Done** (2026-09-02) |
 | P1 | `:app`: login and the sort loop | **Done** (2026-09-10) |
 | P2 | Rankings screen, in-run undo | **Done** (2026-09-10) |
-| P3 | Offline queue (Room + backdated `timestamp`), images, graph | No |
+| P3 | Superseded — see "Feature queue" below | — |
 
 P0 is the whole of the risk and none of the toolchain, so start there.
 
@@ -578,14 +578,7 @@ unverifiable here — a cloud or WSL session can confirm the app compiles,
 installs and renders the login screen, and nothing further. Treat "it builds"
 as a much weaker claim than usual for this module.
 
-**Next step:** the remaining gaps are P3 (offline queue, images, graph) and
-list/character editing, which is the larger one — `:client` implements none
-of the character CRUD the API offers (`POST /api/lists/<id>/characters`,
-`PATCH`/`DELETE` on a character), so it needs client methods, models and
-MockWebServer tests before any UI. Smaller hardening available meanwhile:
-surfacing `InvalidRequestException.fields` on the login form instead of the
-generic Snackbar text, and not swapping the whole card area for a spinner on
-every answer, which makes fast sorting flicker.
+**Next step:** see "Feature queue" below, which replaces the old one-line P3.
 
 Two corrections to the P1 decisions above:
 
@@ -597,6 +590,132 @@ Two corrections to the P1 decisions above:
 - **The group change does not reach an already-running shell.** A session
   whose shell started before the `gpasswd` must wrap emulator commands in
   `sg kvm -c '...'`; any new WSL terminal picks the group up at login.
+
+## Feature queue
+
+Revised 2026-09-10, after P2. This replaces the single P3 row in the phasing
+table, which bundled three unrelated features into one line and hid the fact
+that one of them is not yet designed. Each entry below is one PR.
+
+Sizes are rough and count source, not tests. "`:client` work" is called out
+separately because it is the expensive half: that module is pure JVM and
+fully testable here, so its changes need MockWebServer tests, whereas `:app`
+changes cannot be verified in any session at all (see the caveat at the end).
+
+| # | Item | Size | `:client` work | Blocked on |
+| --- | --- | --- | --- | --- |
+| A | Images on the sort cards | ~100 | None | A precondition — see below |
+| B | Glicko graph screen | ~200 | Yes | Nothing |
+| C | Offline queue | Largest | No | A design decision — see below |
+| D | List and character editing | Large | Substantial | Nothing |
+| E | Small hardening | ~50 | None | Nothing |
+
+**Recommended order: A, B, then C once C is designed.** A is the only entry
+that improves the loop actually used daily; B is self-contained and reopens
+`:client` gently after a phase of `:app`-only work; C should not start as
+code. D and E slot in by appetite.
+
+### A — Images on the sort cards
+
+`:client` already parses `thumbnailLink` and `contextLink` into
+`Character.image`, and `/next` returns them, so this is `:app` only: an image
+loading dependency (Coil is the obvious one) and sort-card layout.
+
+**Check the precondition before writing any code.** Images only appear if the
+list has `show_images` on, and upstream's `MaybeAppendShowImages` removes that
+field from the forms entirely when `IMAGE_SEARCH_KEY` is `""`. If the deployed
+site has no image-search key configured, the flag cannot be turned on and this
+entry is dead on arrival — skip to B. The check is one authenticated
+`GET /api/lists`, reading `show_images` on the lists that matter.
+
+Whatever is built must degrade when `image` is null: the field is optional,
+the uncached path is slow, and a list can legitimately have images enabled
+while individual characters have none cached yet.
+
+### B — Glicko graph screen
+
+The endpoint exists and `:client` never implemented it, so this needs a
+`graph()` method, its response models, and MockWebServer tests before any UI.
+`/api/lists/<id>/graph` returns real JSON arrays — the endpoint parses
+`get_graph_info`'s `json.dumps`'d strings once — so the client does not
+inherit the `graph.html` XSS.
+
+Hand-roll the bar-with-error-bars chart on a Compose `Canvas` rather than
+adding a charting library: it is one chart, of known shape, and a dependency
+here buys little. Only Glicko lists have a graph at all; `get_graph_info`
+returns `None` for insertion sort, so the entry point must be conditional on
+`controller_type`.
+
+### C — Offline queue, and why it is not ready to build
+
+Queuing the writes is the easy half, and it is already supported end to end:
+`submitComparison` takes a backdated `timestamp`, the server accepts past
+timestamps, and `compute_ratings` replays in timestamp order. Forward-dating
+is refused by both, deliberately.
+
+The unsolved half is that **sorting offline needs a source of questions**, and
+`/next` is server-side and re-samples on every call. Three shapes, to decide
+between before writing any Room code:
+
+1. **Prefetch N pairs** from N calls to `/next`. Simplest. But all N are
+   sampled against one rating snapshot, so a batch can repeat a pair, or keep
+   asking questions that the batch's own earlier answers would have made
+   uninteresting. Quality degrades with N.
+2. **Select pairs client-side** from the full ranking and history. No repeats,
+   and questions stay adaptive. The cost is reimplementing the controller's
+   two-step softmax in Kotlin and keeping it in step with the server's — a
+   second source of truth for the algorithm, which is the kind of duplication
+   that rots quietly.
+3. **Queue answers only, never ask offline.** The app queues comparisons when
+   the network drops mid-session and stops asking once it runs out of the pair
+   it was already holding. Smallest and honest; probably enough for a phone
+   that is usually online.
+
+3 is the default unless offline sorting is genuinely wanted for long stretches
+without signal, in which case 1 with a small N is the cheap compromise and 2 is
+the only one that is actually correct.
+
+### D — List and character editing
+
+The API offers full CRUD (`POST /api/lists`, `PATCH`/`DELETE` on a list;
+`POST /api/lists/<id>/characters`, `PATCH`/`DELETE` on a character) and
+`:client` implements **none** of it — its entire surface is `login`, `lists`,
+`ranking`, `nextComparison`, `submitComparison`, `deleteComparison`. So this
+is client methods, models and tests first, then a UI.
+
+These are also the destructive endpoints, run against the live production
+database. The existing rule stands: smoke-test only against the two disposable
+lists the owner confirmed on 2026-09-02, never against the list holding the
+real comparison history.
+
+### E — Small hardening
+
+Independent, pick up anytime:
+
+- The login form shows the generic Snackbar text rather than
+  `InvalidRequestException.fields`, so a field-level rejection reads worse
+  than it should.
+- Every answer swaps the whole card area for a spinner, which makes fast
+  sorting flicker. Keeping the cards up and showing progress more subtly would
+  make the core loop feel markedly better.
+- A long list title crowds the "Lists" button in the sort screen header.
+
+### Optional upstream dependency
+
+`GET /api/lists/<id>/comparisons` — already named above as the natural fourth
+upstream PR. It is what would let undo survive a process restart, since a
+record id currently only ever arrives in the `201` from the client's own
+`POST`. Nothing in this queue requires it, and it costs another PR and another
+deploy on the maintainer's schedule, so it stays optional.
+
+### The caveat that applies to every entry
+
+No session on this box holds credentials for the live site, so every screen
+behind the login is unverifiable by anyone but the owner on a real phone. A
+session can confirm that `:app` compiles, installs, and renders the login
+screen, and nothing further. `:client` is the opposite — fully testable here —
+which is the standing argument for putting each entry's risky logic in
+`:client` and keeping `:app` thin.
 
 ## Open risks
 
