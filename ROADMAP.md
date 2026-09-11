@@ -551,17 +551,24 @@ per "Toolchain lives on the WSL box" above:
   `charsorter.lndyn.com` account. That needs real credentials, which no
   session here holds, and doing it from a screen that had never been
   human-reviewed felt like the wrong first test of a live-writing credential
-  path. The auth handshake itself is already covered by `:client`'s
-  MockWebServer tests and the `LiveSmokeTest` read-only probes; this is only
-  "does the UI screen call it correctly," and that is unverified.
+  path. The auth handshake itself is covered by `:client`'s MockWebServer
+  tests, by `LocalServerIntegrationTest` against a real Django, and by the
+  `LiveSmokeTest` read-only probes; this is only "does the UI screen call it
+  correctly," and that is unverified.
 
 ### P1 confirmed live, and P2 done (2026-09-10)
 
 The owner sideloaded the debug APK onto a real phone and **logged into the
 live site successfully**, reaching the list picker, the sort loop and the
-ranking screen against real data. That closes the gap P0 and P1 both left
-open: nothing had exercised the login handshake, a real `201` from
-`POST /comparisons`, or the ranking read from `:app` before this.
+ranking screen against real data.
+
+That closes the `:app` gap specifically — that the UI screens drive the client
+correctly, end to end, against the deployment rather than against a mock. It
+is **not** the first exercise of the protocol itself: `LocalServerIntegrationTest`
+had already covered the login handshake, a real `201` from `POST /comparisons`
+and the CSRF-refresh retry against a local Django on 2026-09-06 (see the P0
+note above). An earlier revision of this section claimed otherwise, having
+been written on a branch cut before that work merged.
 
 Two changes came out of that session, which also finish P2:
 
