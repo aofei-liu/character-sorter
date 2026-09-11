@@ -408,9 +408,9 @@ history, and `DELETE` endpoints work.
 | Phase | Deliverable | Buildable in a cloud session |
 | --- | --- | --- |
 | P0 | `:client` + its tests | **Done** (2026-09-02) |
-| P1 | `:app`: login and the sort loop | No — needs the SDK |
-| P2 | Rankings screen, in-run undo | No |
-| P3 | Offline queue (Room + backdated `timestamp`), images, graph | No |
+| P1 | `:app`: login and the sort loop | **Done** (2026-09-10) |
+| P2 | Rankings screen, in-run undo | **Done** (2026-09-10) |
+| P3 | Superseded — see "Feature queue" below | — |
 
 P0 is the whole of the risk and none of the toolchain, so start there.
 
@@ -427,6 +427,358 @@ Two things P0 could not do, and P1 inherits: the local Django instance under
 "Open risks" was still not stood up, so nothing has exercised a real `201` from
 `POST /comparisons`; and the CSRF-retry path is proven against MockWebServer
 only, never against a genuinely stale token.
+
+### P1 decisions (2026-09-07)
+
+Settled before any `:app` code is written, so the next session starts from a
+spec rather than re-deriving it. No code exists yet.
+
+**Scope: prototype only.** Log in, pick a list, answer comparisons, view the
+ranking. Explicitly out — images, the graph, list/character editing, and the
+offline queue. Those are P2/P3; folding them in now would widen the first
+`:app` diff past what is reviewable.
+
+**`:client` needs no changes for P1.** Its surface — `login`, `lists`,
+`nextComparison`, `submitComparison`, `deleteComparison`, `ranking`,
+`cookieJar.save()/restore()`, `isLoggedIn` — already covers the prototype.
+Undo stays in-run only; the `GET /comparisons` endpoint that would let it
+survive a restart is still deferred and is not a P1 dependency.
+
+**Toolchain lives on the WSL box, under `~`.** The SDK is installed with
+`cmdline-tools` + `sdkmanager` into a user directory — no `sudo`, no system
+package. This is possible here because the box's network reaches
+`dl.google.com` and Google's Maven; the "No — needs the SDK" cells in the
+Phasing table were written for cloud sessions, where those hosts are off the
+allowlist, and do not apply to this machine. `android/settings.gradle.kts`
+gains `google()` in both repository blocks and `include(":app")`.
+
+**Delivery: sideload first, emulator for iteration.** The target is a debug
+APK (`./gradlew :app:assembleDebug`) copied to a physical phone — the "real
+phone" goal, and it needs no emulator or USB passthrough. An emulator is also
+stood up on the WSL box for fast build-and-look cycles: `/dev/kvm` is present,
+so it is KVM-accelerated, and it needs neither a GPU nor WSLg —
+`-gpu swiftshader_indirect` (software rendering) and `-no-window` (headless,
+screenshot via `adb exec-out screencap`) both work, so WSLg GPU flakiness
+cannot block it.
+
+**`minSdk = 26`, `compileSdk = 34`, `applicationId
+io.github.aofeiliu.charsorter`.** `minSdk 26` (Android 8.0) is the floor at
+which `java.time` ships in the platform runtime, so `:client`'s
+`OffsetDateTime` in `submitComparison` needs no core-library desugaring — one
+fewer moving part, at the cost of pre-2017 devices, which the owner does not
+use. `compileSdk` is the API level the module compiles against and is
+independent of that floor. The app id matches the `:client` package namespace.
+
+### P1 progress (2026-09-10): toolchain installed
+
+Step 1 of P1 — stand up the build toolchain on the WSL box — is done. No
+`:app` code exists yet; the next step is wiring `:app` into the Gradle build.
+
+Everything is under `~/opt`, installed without `sudo`:
+
+| Component | Version | Path |
+| --- | --- | --- |
+| JDK (Temurin) | 21.0.12.1 | `~/opt/jdk-21` |
+| Android `cmdline-tools` | 12.0 | `~/opt/android-sdk` |
+| `platform-tools` | 37.0.1 | |
+| `platforms;android-34` | rev 3 | |
+| `build-tools;34.0.0` | 34.0.0 | |
+| `emulator` | 37.1.11 | |
+| `system-images;android-34;google_apis;x86_64` | — | AVD `charsorter34` (Pixel 6) |
+
+`~/opt/android-env.sh` exports `JAVA_HOME`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`
+and `PATH`; `~/.bashrc` sources it. Non-interactive shells (including anything a
+Claude Code Bash call runs) do **not** get it — `~/.bashrc` returns early for
+those — so a script must `. ~/opt/android-env.sh` explicitly. Footprint is
+~5.9 GB (5.5 GB SDK, 346 MB JDK).
+
+Validated: the Gradle wrapper (8.14.3) downloaded and ran `:client:test` green
+on the new JDK.
+
+### P1 progress (2026-09-10): `:app` wired in, all four screens compile and run
+
+`settings.gradle.kts` now includes `:app`; `android/app` is a Compose module
+(AGP 8.7.3, Kotlin's `org.jetbrains.kotlin.plugin.compose` — no separate
+Compose Compiler version to track, since Kotlin 2.0 folded it into the
+K2-aligned Gradle plugin) depending on `:client`, with `minSdk 26`,
+`compileSdk 34` and `applicationId io.github.aofeiliu.charsorter` as decided
+above.
+
+**Architecture:** a sealed `Screen` (`Login`, `PickList`, `Sorting`, `Ranking`)
+held in one `AppViewModel`, switched on in `CharSorterApp`'s top-level
+composable — no Navigation-Compose dependency; four screens don't earn it.
+`AppViewModel` owns the single `CharSorterClient` instance and runs every
+client call (blocking by design) on `Dispatchers.IO` via `viewModelScope`.
+`NotAuthenticatedException` drops the state back to `Login` and clears the
+stored session — retrying a stale 401 without a fresh login would just repeat
+it. Every other `ApiException`/`IOException` surfaces in a dismissable
+Snackbar shared across all four screens. `SessionStore` persists
+`cookieJar.save()` in `SharedPreferences` across process restarts; only the
+cookies are stored, never the password, per `SessionCookieJar`'s own
+docstring.
+
+**Verified on the WSL box**, not a cloud session — this machine's
+`dl.google.com`/Google-Maven reachability is what makes any of this possible,
+per "Toolchain lives on the WSL box" above:
+
+- `./gradlew :app:assembleDebug` and `:client:test` both pass.
+- Booted `charsorter34` headless (`-gpu swiftshader_indirect -no-window
+  -memory 1536`), installed the debug APK, and screenshotted the running app
+  via `adb exec-out screencap` — the login screen renders correctly (title,
+  two fields, a "Log in" button that is correctly disabled while either field
+  is empty).
+- The emulator was torn down immediately after the screenshot rather than
+  left running. **This box's free RAM is tighter than the P1 decisions
+  assumed:** `free -h` reports 7.7 GiB total, not the 16 GiB in
+  `~/.claude/CLAUDE.md`'s hardware table — evidently a `.wslconfig` cap, not
+  yet reconciled with that doc — and booting the emulator alongside the
+  already-running Gradle/Kotlin daemons pushed available memory to ~1.1 GiB
+  with swap engaged. It booted and ran without failing, but there is no
+  headroom for a second concurrent job (another emulator instance, a second
+  Gradle build, or Claude Science) while it's up.
+- **Not attempted:** logging in against the real
+  `charsorter.lndyn.com` account. That needs real credentials, which no
+  session here holds, and doing it from a screen that had never been
+  human-reviewed felt like the wrong first test of a live-writing credential
+  path. The auth handshake itself is already covered by `:client`'s
+  MockWebServer tests and the `LiveSmokeTest` read-only probes; this is only
+  "does the UI screen call it correctly," and that is unverified.
+
+### P1 confirmed live, and P2 done (2026-09-10)
+
+The owner sideloaded the debug APK onto a real phone and **logged into the
+live site successfully**, reaching the list picker, the sort loop and the
+ranking screen against real data. That closes the gap P0 and P1 both left
+open: nothing had exercised the login handshake, a real `201` from
+`POST /comparisons`, or the ranking read from `:app` before this.
+
+Two changes came out of that session, which also finish P2:
+
+- **The comparison cards stack top/bottom, not side by side.** Reported from
+  the phone: two half-width columns are too narrow at a portrait aspect
+  ratio, so names wrap badly while most of the vertical space goes unused.
+  Prefer vertical stacking for any two-option choice UI in this fork — the
+  web sort page has the same pattern and the same target device.
+- **In-run undo.** `AppViewModel` keeps an `undoStack` of the `Comparison`
+  records this process posted; an Undo button on the progress line pops the
+  last one via `DELETE /comparisons/<rec_id>` and re-fetches `/next`. It sits
+  away from the three answer controls so it cannot be mis-tapped mid-sort,
+  and it is disabled while a request is in flight. The entry is popped only
+  after the server accepts the delete, so a failed undo can be retried.
+
+  The stack is deliberately not persisted. A record id is only ever seen in
+  the `201` from our own `POST` — there is no `GET /comparisons` — so undo
+  reaches back exactly as far as this process does. Worth knowing when using
+  it: for a Glicko list, `/next` re-samples afterwards, so undo takes the
+  record back but does **not** re-ask the question just answered.
+
+**Not yet verified by anyone but the owner's own phone.** No session on this
+box holds credentials for the live site, so every screen behind the login is
+unverifiable here — a cloud or WSL session can confirm the app compiles,
+installs and renders the login screen, and nothing further. Treat "it builds"
+as a much weaker claim than usual for this module.
+
+**Next step:** see "Feature queue" below, which replaces the old one-line P3.
+
+Two corrections to the P1 decisions above:
+
+- **KVM was not usable out of the box.** `/dev/kvm` is present but is
+  `root:kvm` mode `0660`, and the login user was not in the `kvm` group, so
+  `emulator -accel-check` failed. Fixed with `sudo gpasswd -a $USER kvm` (the
+  one step in P1 that needed `sudo`). After that, `-accel-check` reports "KVM
+  (version 12) is installed and usable".
+- **The group change does not reach an already-running shell.** A session
+  whose shell started before the `gpasswd` must wrap emulator commands in
+  `sg kvm -c '...'`; any new WSL terminal picks the group up at login.
+
+## Feature queue
+
+Revised 2026-09-10 (second pass), with the owner's calls recorded so they are
+not relitigated. This replaces the single P3 row in the phasing table, which
+bundled unrelated features into one line and hid the fact that the one most
+wanted is blocked on the server, not on effort.
+
+| # | Item | Size | `:client` work | Blocked on |
+| --- | --- | --- | --- | --- |
+| 1 | List and character editing | Large | Substantial | Nothing |
+| 2 | Per-character ranking history plot | Large | Yes | An upstream API change |
+| 3 | Whole-list Glicko chart | ~200 | Yes | A readability decision |
+| 4 | Small hardening | ~50 | None | Nothing |
+
+**Deferred by decision, not forgotten** (2026-09-10):
+
+- **Images on the sort cards.** "We don't really need images tbh, we can add
+  it at a later date." If revived, check the precondition first: images only
+  render when a list has `show_images` on, and upstream's
+  `MaybeAppendShowImages` removes that field entirely when `IMAGE_SEARCH_KEY`
+  is `""`. One authenticated `GET /api/lists` settles whether the feature can
+  work at all before any code is written.
+- **Offline queue.** Not needed now. The analysis is kept below so the design
+  question is not re-derived from scratch later.
+
+### 1 — List and character editing
+
+**Next up.** The reason is scope of use: without it the app can read and sort
+but not maintain a list, so the desktop site is still required for ordinary
+upkeep. Editing is what makes the phone a replacement rather than a companion.
+
+The API offers full CRUD — `POST /api/lists`, `PATCH`/`DELETE` on a list,
+`POST /api/lists/<id>/characters`, `PATCH`/`DELETE` on a character — and
+`:client` implements **none** of it. Its entire surface is `login`, `lists`,
+`ranking`, `nextComparison`, `submitComparison`, `deleteComparison`. So this
+is client methods, models and MockWebServer tests first, then UI.
+
+That split is a feature here, not a chore: `:client` is the only module any
+session on this box can actually verify, so putting the request shaping,
+error mapping and field-level validation there means most of this entry is
+testable before it ever reaches a screen.
+
+These are also the destructive endpoints, run against the live production
+database. The standing rule applies: smoke-test only against the two
+disposable lists confirmed on 2026-09-02, never against the list holding the
+real comparison history. `DELETE` on a character is not recoverable through
+any surface this fork has.
+
+### 2 — Per-character ranking history plot
+
+The feature the owner actually wants: tap a character in the ranked list and
+see how its rating has moved over time, zoomable. It is also the better
+phone-native answer to "how is this list doing" than entry 3, because it shows
+one character at a time instead of asking a phone screen to render hundreds of
+bars at once.
+
+**It is blocked on the server, and the reason is worth stating precisely.**
+Verified against the source, not the notes:
+
+- `SortRecord` holds every comparison with a timestamp, and `compute_ratings`
+  replays them in timestamp order in a single pass. So rating history *is*
+  derivable from data the server already stores.
+- Nothing exposes it. `GET /api/lists/<id>/graph` calls `get_graph_info`,
+  which replays and then emits only the **final** state — one rating and one
+  `2*RD` per character. There is no historical anything in the API today.
+- `lists/<id>/comparisons` **already exists as a route** but is decorated
+  `@api_view("POST")`, so a `GET` returns 405, not 404. The earlier note in
+  this file that there is "no `GET` on `/comparisons`" was right about the
+  behaviour and misleading about the cost of fixing it.
+
+Two shapes for the upstream ask:
+
+**(a) Expose the raw records.** `api_view` takes varargs, so this is widening
+one decorator to `@api_view("GET", "POST")` and adding a branch that
+serializes the list's records — about as small as an upstream PR gets, on a
+route that already exists. The client then replays the ratings itself.
+
+**(b) Compute the history server-side.** A new endpoint that replays once and
+emits, per character, its rating after each match it played. Payload stays
+sane because a rating only changes when that character plays: every record
+touches exactly two characters, so the total series length is `2 x records`,
+not `characters x records`. Server cost is one pass — the same order as any
+ranking request, which already replays everything.
+
+**Recommendation: (a).** It is the smaller ask on a maintainer's schedule, and
+it unblocks three separate things at once — this plot, durable undo (a record
+id currently only ever arrives in the `201` from our own `POST`), and any
+future offline pair selection. After it lands, the fork iterates on all three
+without asking again.
+
+The cost of (a) is porting the Glicko replay to Kotlin, which earlier notes
+treated as prohibitive. It is smaller than it sounds: history needs only
+`process_record` and the RD decay, **not** the two-step softmax match
+selection, which is the genuinely gnarly part and is irrelevant to replaying
+what already happened. The port must match the server's constants
+(`CONFIDENCE_BOOST = 2`, `RD_RESET_TIME` of 90 days, the defaults) and belongs
+in `:client`, where it can be tested. Drift would show up as the app
+disagreeing with the website about the same list, so test it against a real
+list's `/graph` output, whose final state the replay must reproduce exactly.
+
+Opening the upstream PR is its own friction — a cross-fork PR cannot be
+created from a session here; see "Opening a PR against upstream" in
+`CLAUDE.md`, which ends in handing over a compare link.
+
+### 3 — Whole-list Glicko chart
+
+Wanted, but it needs a readability answer before code. The web version is a
+Plotly bar-with-error-bars across every character, and a phone cannot render
+hundreds of bars legibly. Candidates, in rough order of promise:
+
+1. **Horizontal bars in a scrolling list**, one row per character, rating with
+   an RD whisker. Phone-native, reuses the ranking screen's layout, and scales
+   to any list length.
+2. Vertical bars on a horizontally scrollable canvas — closest to the desktop
+   chart, worst on a phone.
+3. Top-N plus search, which answers a different question than the desktop
+   chart does.
+
+`:client` needs a `graph()` method, models and tests either way; the endpoint
+exists and the client never implemented it. `/graph` returns real JSON arrays
+(the endpoint parses `get_graph_info`'s `json.dumps`'d strings once), so the
+client does not inherit the `graph.html` XSS. Only Glicko lists have a graph —
+`get_graph_info` returns `None` for insertion sort, and the endpoint 404s —
+so the entry point must be conditional on `controller_type`.
+
+If entry 2 ships first, revisit whether this is still wanted; the drill-down
+may cover the need.
+
+### 4 — Small hardening
+
+Three unrelated papercuts, independent and pick-up-anytime:
+
+- **The sort loop flickers.** Every answer swaps the whole card area for a
+  full-screen spinner until the next pair arrives, so fast sorting stutters on
+  every tap. This is the one here that is felt daily; keeping the cards up and
+  showing progress more subtly would make the core loop feel markedly better.
+- **Login errors are vague.** A field-level rejection from the server carries
+  `InvalidRequestException.fields`, but the form shows only the generic
+  Snackbar text, so "which field" is lost.
+- **Long titles crowd the header.** A long list title squeezes the "Lists"
+  button on the sort screen.
+- **The ranking screen has no retry.** A failed load leaves `ranking` null,
+  which that screen renders as a spinner forever; the only way out is backing
+  out to the list picker and re-entering. The sort screen grew a Retry branch
+  when the duplicate-comparison bug was fixed — this is the same pattern, and
+  the same three lines.
+
+A note on where these keep coming from: the duplicate-comparison bug fixed in
+this PR lived in `AppViewModel`'s state machine, which is exactly the "risky
+logic" the module split was meant to keep in `:client`, where it would have
+been testable. `:app` has no tests and cannot be verified in any session here.
+Logic that can be stated as a rule about requests and responses belongs on the
+`:client` side of the line.
+
+### Deferred: the offline queue
+
+Kept for whenever it comes back. Queuing the writes is the easy half and is
+already supported end to end: `submitComparison` takes a backdated
+`timestamp`, the server accepts past timestamps, and `compute_ratings` replays
+in timestamp order. Forward-dating is refused by both, deliberately.
+
+The unsolved half is that **sorting offline needs a source of questions**, and
+`/next` is server-side and re-samples on every call. Three shapes:
+
+1. **Prefetch N pairs** from N calls to `/next`. Simplest, but all N are
+   sampled against one rating snapshot, so a batch can repeat a pair or keep
+   asking what its own earlier answers made uninteresting. Quality degrades
+   with N.
+2. **Select pairs client-side** from the full ranking and history. Correct and
+   adaptive, but needs the softmax selection ported to Kotlin on top of the
+   replay — a second source of truth for the algorithm. Note this becomes
+   materially cheaper if entry 2 lands, since the replay half would already
+   exist.
+3. **Queue answers only, never ask offline.** Queue comparisons when the
+   network drops mid-session, stop asking once the held pair runs out.
+   Smallest and honest; probably enough for a phone that is usually online.
+
+3 is the default unless sorting through long stretches without signal is
+genuinely wanted.
+
+### The caveat that applies to every entry
+
+No session on this box holds credentials for the live site, so every screen
+behind the login is unverifiable by anyone but the owner on a real phone. A
+session can confirm that `:app` compiles, installs and renders the login
+screen, and nothing further. `:client` is the opposite — fully testable here —
+which is the standing argument for putting each entry's risky logic in
+`:client` and keeping `:app` thin.
 
 ## Open risks
 
