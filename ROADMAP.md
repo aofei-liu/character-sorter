@@ -408,8 +408,8 @@ history, and `DELETE` endpoints work.
 | Phase | Deliverable | Buildable in a cloud session |
 | --- | --- | --- |
 | P0 | `:client` + its tests | **Done** (2026-09-02) |
-| P1 | `:app`: login and the sort loop | No — needs the SDK |
-| P2 | Rankings screen, in-run undo | No |
+| P1 | `:app`: login and the sort loop | **Done** (2026-09-10) |
+| P2 | Rankings screen, in-run undo | **Done** (2026-09-10) |
 | P3 | Offline queue (Room + backdated `timestamp`), images, graph | No |
 
 P0 is the whole of the risk and none of the toolchain, so start there.
@@ -544,11 +544,48 @@ per "Toolchain lives on the WSL box" above:
   MockWebServer tests and the `LiveSmokeTest` read-only probes; this is only
   "does the UI screen call it correctly," and that is unverified.
 
-**Next step:** either wire real credentials through once available (a local
-`local.properties`-style entry, never committed) to confirm the handshake
-from `:app` end to end, or move on to hardening what's here — e.g. surfacing
-`InvalidRequestException.fields` on the login form instead of the generic
-Snackbar text, which login's own 400 path never actually triggers today.
+### P1 confirmed live, and P2 done (2026-09-10)
+
+The owner sideloaded the debug APK onto a real phone and **logged into the
+live site successfully**, reaching the list picker, the sort loop and the
+ranking screen against real data. That closes the gap P0 and P1 both left
+open: nothing had exercised the login handshake, a real `201` from
+`POST /comparisons`, or the ranking read from `:app` before this.
+
+Two changes came out of that session, which also finish P2:
+
+- **The comparison cards stack top/bottom, not side by side.** Reported from
+  the phone: two half-width columns are too narrow at a portrait aspect
+  ratio, so names wrap badly while most of the vertical space goes unused.
+  Prefer vertical stacking for any two-option choice UI in this fork — the
+  web sort page has the same pattern and the same target device.
+- **In-run undo.** `AppViewModel` keeps an `undoStack` of the `Comparison`
+  records this process posted; an Undo button on the progress line pops the
+  last one via `DELETE /comparisons/<rec_id>` and re-fetches `/next`. It sits
+  away from the three answer controls so it cannot be mis-tapped mid-sort,
+  and it is disabled while a request is in flight. The entry is popped only
+  after the server accepts the delete, so a failed undo can be retried.
+
+  The stack is deliberately not persisted. A record id is only ever seen in
+  the `201` from our own `POST` — there is no `GET /comparisons` — so undo
+  reaches back exactly as far as this process does. Worth knowing when using
+  it: for a Glicko list, `/next` re-samples afterwards, so undo takes the
+  record back but does **not** re-ask the question just answered.
+
+**Not yet verified by anyone but the owner's own phone.** No session on this
+box holds credentials for the live site, so every screen behind the login is
+unverifiable here — a cloud or WSL session can confirm the app compiles,
+installs and renders the login screen, and nothing further. Treat "it builds"
+as a much weaker claim than usual for this module.
+
+**Next step:** the remaining gaps are P3 (offline queue, images, graph) and
+list/character editing, which is the larger one — `:client` implements none
+of the character CRUD the API offers (`POST /api/lists/<id>/characters`,
+`PATCH`/`DELETE` on a character), so it needs client methods, models and
+MockWebServer tests before any UI. Smaller hardening available meanwhile:
+surfacing `InvalidRequestException.fields` on the login form instead of the
+generic Snackbar text, and not swapping the whole card area for a spinner on
+every answer, which makes fast sorting flicker.
 
 Two corrections to the P1 decisions above:
 
