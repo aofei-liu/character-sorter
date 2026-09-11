@@ -25,6 +25,9 @@ data class CharacterList(
 @Serializable
 internal data class ListsResponse(val lists: List<CharacterList>)
 
+@Serializable
+internal data class CharactersResponse(val characters: List<Character>)
+
 /** A cached Google image result. Only present when the list shows images. */
 @Serializable
 data class CharacterImage(
