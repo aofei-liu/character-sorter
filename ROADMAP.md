@@ -593,126 +593,177 @@ Two corrections to the P1 decisions above:
 
 ## Feature queue
 
-Revised 2026-09-10, after P2. This replaces the single P3 row in the phasing
-table, which bundled three unrelated features into one line and hid the fact
-that one of them is not yet designed. Each entry below is one PR.
-
-Sizes are rough and count source, not tests. "`:client` work" is called out
-separately because it is the expensive half: that module is pure JVM and
-fully testable here, so its changes need MockWebServer tests, whereas `:app`
-changes cannot be verified in any session at all (see the caveat at the end).
+Revised 2026-09-10 (second pass), with the owner's calls recorded so they are
+not relitigated. This replaces the single P3 row in the phasing table, which
+bundled unrelated features into one line and hid the fact that the one most
+wanted is blocked on the server, not on effort.
 
 | # | Item | Size | `:client` work | Blocked on |
 | --- | --- | --- | --- | --- |
-| A | Images on the sort cards | ~100 | None | A precondition — see below |
-| B | Glicko graph screen | ~200 | Yes | Nothing |
-| C | Offline queue | Largest | No | A design decision — see below |
-| D | List and character editing | Large | Substantial | Nothing |
-| E | Small hardening | ~50 | None | Nothing |
+| 1 | List and character editing | Large | Substantial | Nothing |
+| 2 | Per-character ranking history plot | Large | Yes | An upstream API change |
+| 3 | Whole-list Glicko chart | ~200 | Yes | A readability decision |
+| 4 | Small hardening | ~50 | None | Nothing |
 
-**Recommended order: A, B, then C once C is designed.** A is the only entry
-that improves the loop actually used daily; B is self-contained and reopens
-`:client` gently after a phase of `:app`-only work; C should not start as
-code. D and E slot in by appetite.
+**Deferred by decision, not forgotten** (2026-09-10):
 
-### A — Images on the sort cards
+- **Images on the sort cards.** "We don't really need images tbh, we can add
+  it at a later date." If revived, check the precondition first: images only
+  render when a list has `show_images` on, and upstream's
+  `MaybeAppendShowImages` removes that field entirely when `IMAGE_SEARCH_KEY`
+  is `""`. One authenticated `GET /api/lists` settles whether the feature can
+  work at all before any code is written.
+- **Offline queue.** Not needed now. The analysis is kept below so the design
+  question is not re-derived from scratch later.
 
-`:client` already parses `thumbnailLink` and `contextLink` into
-`Character.image`, and `/next` returns them, so this is `:app` only: an image
-loading dependency (Coil is the obvious one) and sort-card layout.
+### 1 — List and character editing
 
-**Check the precondition before writing any code.** Images only appear if the
-list has `show_images` on, and upstream's `MaybeAppendShowImages` removes that
-field from the forms entirely when `IMAGE_SEARCH_KEY` is `""`. If the deployed
-site has no image-search key configured, the flag cannot be turned on and this
-entry is dead on arrival — skip to B. The check is one authenticated
-`GET /api/lists`, reading `show_images` on the lists that matter.
+**Next up.** The reason is scope of use: without it the app can read and sort
+but not maintain a list, so the desktop site is still required for ordinary
+upkeep. Editing is what makes the phone a replacement rather than a companion.
 
-Whatever is built must degrade when `image` is null: the field is optional,
-the uncached path is slow, and a list can legitimately have images enabled
-while individual characters have none cached yet.
-
-### B — Glicko graph screen
-
-The endpoint exists and `:client` never implemented it, so this needs a
-`graph()` method, its response models, and MockWebServer tests before any UI.
-`/api/lists/<id>/graph` returns real JSON arrays — the endpoint parses
-`get_graph_info`'s `json.dumps`'d strings once — so the client does not
-inherit the `graph.html` XSS.
-
-Hand-roll the bar-with-error-bars chart on a Compose `Canvas` rather than
-adding a charting library: it is one chart, of known shape, and a dependency
-here buys little. Only Glicko lists have a graph at all; `get_graph_info`
-returns `None` for insertion sort, so the entry point must be conditional on
-`controller_type`.
-
-### C — Offline queue, and why it is not ready to build
-
-Queuing the writes is the easy half, and it is already supported end to end:
-`submitComparison` takes a backdated `timestamp`, the server accepts past
-timestamps, and `compute_ratings` replays in timestamp order. Forward-dating
-is refused by both, deliberately.
-
-The unsolved half is that **sorting offline needs a source of questions**, and
-`/next` is server-side and re-samples on every call. Three shapes, to decide
-between before writing any Room code:
-
-1. **Prefetch N pairs** from N calls to `/next`. Simplest. But all N are
-   sampled against one rating snapshot, so a batch can repeat a pair, or keep
-   asking questions that the batch's own earlier answers would have made
-   uninteresting. Quality degrades with N.
-2. **Select pairs client-side** from the full ranking and history. No repeats,
-   and questions stay adaptive. The cost is reimplementing the controller's
-   two-step softmax in Kotlin and keeping it in step with the server's — a
-   second source of truth for the algorithm, which is the kind of duplication
-   that rots quietly.
-3. **Queue answers only, never ask offline.** The app queues comparisons when
-   the network drops mid-session and stops asking once it runs out of the pair
-   it was already holding. Smallest and honest; probably enough for a phone
-   that is usually online.
-
-3 is the default unless offline sorting is genuinely wanted for long stretches
-without signal, in which case 1 with a small N is the cheap compromise and 2 is
-the only one that is actually correct.
-
-### D — List and character editing
-
-The API offers full CRUD (`POST /api/lists`, `PATCH`/`DELETE` on a list;
-`POST /api/lists/<id>/characters`, `PATCH`/`DELETE` on a character) and
-`:client` implements **none** of it — its entire surface is `login`, `lists`,
+The API offers full CRUD — `POST /api/lists`, `PATCH`/`DELETE` on a list,
+`POST /api/lists/<id>/characters`, `PATCH`/`DELETE` on a character — and
+`:client` implements **none** of it. Its entire surface is `login`, `lists`,
 `ranking`, `nextComparison`, `submitComparison`, `deleteComparison`. So this
-is client methods, models and tests first, then a UI.
+is client methods, models and MockWebServer tests first, then UI.
+
+That split is a feature here, not a chore: `:client` is the only module any
+session on this box can actually verify, so putting the request shaping,
+error mapping and field-level validation there means most of this entry is
+testable before it ever reaches a screen.
 
 These are also the destructive endpoints, run against the live production
-database. The existing rule stands: smoke-test only against the two disposable
-lists the owner confirmed on 2026-09-02, never against the list holding the
-real comparison history.
+database. The standing rule applies: smoke-test only against the two
+disposable lists confirmed on 2026-09-02, never against the list holding the
+real comparison history. `DELETE` on a character is not recoverable through
+any surface this fork has.
 
-### E — Small hardening
+### 2 — Per-character ranking history plot
 
-Independent, pick up anytime:
+The feature the owner actually wants: tap a character in the ranked list and
+see how its rating has moved over time, zoomable. It is also the better
+phone-native answer to "how is this list doing" than entry 3, because it shows
+one character at a time instead of asking a phone screen to render hundreds of
+bars at once.
 
-- The login form shows the generic Snackbar text rather than
-  `InvalidRequestException.fields`, so a field-level rejection reads worse
-  than it should.
-- Every answer swaps the whole card area for a spinner, which makes fast
-  sorting flicker. Keeping the cards up and showing progress more subtly would
-  make the core loop feel markedly better.
-- A long list title crowds the "Lists" button in the sort screen header.
+**It is blocked on the server, and the reason is worth stating precisely.**
+Verified against the source, not the notes:
 
-### Optional upstream dependency
+- `SortRecord` holds every comparison with a timestamp, and `compute_ratings`
+  replays them in timestamp order in a single pass. So rating history *is*
+  derivable from data the server already stores.
+- Nothing exposes it. `GET /api/lists/<id>/graph` calls `get_graph_info`,
+  which replays and then emits only the **final** state — one rating and one
+  `2*RD` per character. There is no historical anything in the API today.
+- `lists/<id>/comparisons` **already exists as a route** but is decorated
+  `@api_view("POST")`, so a `GET` returns 405, not 404. The earlier note in
+  this file that there is "no `GET` on `/comparisons`" was right about the
+  behaviour and misleading about the cost of fixing it.
 
-`GET /api/lists/<id>/comparisons` — already named above as the natural fourth
-upstream PR. It is what would let undo survive a process restart, since a
-record id currently only ever arrives in the `201` from the client's own
-`POST`. Nothing in this queue requires it, and it costs another PR and another
-deploy on the maintainer's schedule, so it stays optional.
+Two shapes for the upstream ask:
+
+**(a) Expose the raw records.** `api_view` takes varargs, so this is widening
+one decorator to `@api_view("GET", "POST")` and adding a branch that
+serializes the list's records — about as small as an upstream PR gets, on a
+route that already exists. The client then replays the ratings itself.
+
+**(b) Compute the history server-side.** A new endpoint that replays once and
+emits, per character, its rating after each match it played. Payload stays
+sane because a rating only changes when that character plays: every record
+touches exactly two characters, so the total series length is `2 x records`,
+not `characters x records`. Server cost is one pass — the same order as any
+ranking request, which already replays everything.
+
+**Recommendation: (a).** It is the smaller ask on a maintainer's schedule, and
+it unblocks three separate things at once — this plot, durable undo (a record
+id currently only ever arrives in the `201` from our own `POST`), and any
+future offline pair selection. After it lands, the fork iterates on all three
+without asking again.
+
+The cost of (a) is porting the Glicko replay to Kotlin, which earlier notes
+treated as prohibitive. It is smaller than it sounds: history needs only
+`process_record` and the RD decay, **not** the two-step softmax match
+selection, which is the genuinely gnarly part and is irrelevant to replaying
+what already happened. The port must match the server's constants
+(`CONFIDENCE_BOOST = 2`, `RD_RESET_TIME` of 90 days, the defaults) and belongs
+in `:client`, where it can be tested. Drift would show up as the app
+disagreeing with the website about the same list, so test it against a real
+list's `/graph` output, whose final state the replay must reproduce exactly.
+
+Opening the upstream PR is its own friction — a cross-fork PR cannot be
+created from a session here; see "Opening a PR against upstream" in
+`CLAUDE.md`, which ends in handing over a compare link.
+
+### 3 — Whole-list Glicko chart
+
+Wanted, but it needs a readability answer before code. The web version is a
+Plotly bar-with-error-bars across every character, and a phone cannot render
+hundreds of bars legibly. Candidates, in rough order of promise:
+
+1. **Horizontal bars in a scrolling list**, one row per character, rating with
+   an RD whisker. Phone-native, reuses the ranking screen's layout, and scales
+   to any list length.
+2. Vertical bars on a horizontally scrollable canvas — closest to the desktop
+   chart, worst on a phone.
+3. Top-N plus search, which answers a different question than the desktop
+   chart does.
+
+`:client` needs a `graph()` method, models and tests either way; the endpoint
+exists and the client never implemented it. `/graph` returns real JSON arrays
+(the endpoint parses `get_graph_info`'s `json.dumps`'d strings once), so the
+client does not inherit the `graph.html` XSS. Only Glicko lists have a graph —
+`get_graph_info` returns `None` for insertion sort, and the endpoint 404s —
+so the entry point must be conditional on `controller_type`.
+
+If entry 2 ships first, revisit whether this is still wanted; the drill-down
+may cover the need.
+
+### 4 — Small hardening
+
+Three unrelated papercuts, independent and pick-up-anytime:
+
+- **The sort loop flickers.** Every answer swaps the whole card area for a
+  full-screen spinner until the next pair arrives, so fast sorting stutters on
+  every tap. This is the one here that is felt daily; keeping the cards up and
+  showing progress more subtly would make the core loop feel markedly better.
+- **Login errors are vague.** A field-level rejection from the server carries
+  `InvalidRequestException.fields`, but the form shows only the generic
+  Snackbar text, so "which field" is lost.
+- **Long titles crowd the header.** A long list title squeezes the "Lists"
+  button on the sort screen.
+
+### Deferred: the offline queue
+
+Kept for whenever it comes back. Queuing the writes is the easy half and is
+already supported end to end: `submitComparison` takes a backdated
+`timestamp`, the server accepts past timestamps, and `compute_ratings` replays
+in timestamp order. Forward-dating is refused by both, deliberately.
+
+The unsolved half is that **sorting offline needs a source of questions**, and
+`/next` is server-side and re-samples on every call. Three shapes:
+
+1. **Prefetch N pairs** from N calls to `/next`. Simplest, but all N are
+   sampled against one rating snapshot, so a batch can repeat a pair or keep
+   asking what its own earlier answers made uninteresting. Quality degrades
+   with N.
+2. **Select pairs client-side** from the full ranking and history. Correct and
+   adaptive, but needs the softmax selection ported to Kotlin on top of the
+   replay — a second source of truth for the algorithm. Note this becomes
+   materially cheaper if entry 2 lands, since the replay half would already
+   exist.
+3. **Queue answers only, never ask offline.** Queue comparisons when the
+   network drops mid-session, stop asking once the held pair runs out.
+   Smallest and honest; probably enough for a phone that is usually online.
+
+3 is the default unless sorting through long stretches without signal is
+genuinely wanted.
 
 ### The caveat that applies to every entry
 
 No session on this box holds credentials for the live site, so every screen
 behind the login is unverifiable by anyone but the owner on a real phone. A
-session can confirm that `:app` compiles, installs, and renders the login
+session can confirm that `:app` compiles, installs and renders the login
 screen, and nothing further. `:client` is the opposite — fully testable here —
 which is the standing argument for putting each entry's risky logic in
 `:client` and keeping `:app` thin.
