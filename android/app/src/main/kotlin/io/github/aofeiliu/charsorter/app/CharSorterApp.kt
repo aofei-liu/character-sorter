@@ -2,7 +2,6 @@ package io.github.aofeiliu.charsorter.app
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -12,20 +11,23 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.aofeiliu.charsorter.app.ui.CharSorterTheme
 import io.github.aofeiliu.charsorter.app.ui.EditListScreen
 import io.github.aofeiliu.charsorter.app.ui.ListPickerScreen
 import io.github.aofeiliu.charsorter.app.ui.LoginScreen
 import io.github.aofeiliu.charsorter.app.ui.RankingScreen
 import io.github.aofeiliu.charsorter.app.ui.SortScreen
+import io.github.aofeiliu.charsorter.app.ui.charSorterBackground
 
 @Composable
 fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
 
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            Box(modifier = Modifier.fillMaxSize()) {
+    CharSorterTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
+            Box(modifier = Modifier.fillMaxSize().charSorterBackground()) {
                 when (val screen = state.screen) {
                     is Screen.Login -> LoginScreen(
                         busy = state.busy,
