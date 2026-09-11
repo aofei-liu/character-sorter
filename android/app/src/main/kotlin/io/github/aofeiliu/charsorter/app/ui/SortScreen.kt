@@ -31,7 +31,9 @@ fun SortScreen(
     list: CharacterList,
     pending: NextComparison?,
     busy: Boolean,
+    canUndo: Boolean,
     onAnswer: (Verdict) -> Unit,
+    onUndo: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -42,8 +44,18 @@ fun SortScreen(
             Text(list.title, style = MaterialTheme.typography.headlineSmall)
             TextButton(onClick = onBack) { Text("Lists") }
         }
-        pending?.progress?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                pending?.progress.orEmpty(),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            if (canUndo) {
+                TextButton(onClick = onUndo, enabled = !busy) { Text("Undo") }
+            }
         }
 
         when {

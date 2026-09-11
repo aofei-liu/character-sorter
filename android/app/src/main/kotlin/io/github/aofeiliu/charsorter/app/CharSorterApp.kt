@@ -41,6 +41,7 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                         list = screen.list,
                         pending = state.pending,
                         busy = state.busy,
+                        canUndo = state.undoStack.isNotEmpty(),
                         onAnswer = { verdict ->
                             val pair = state.pending
                             val char1 = pair?.char1?.id
@@ -49,6 +50,7 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                                 viewModel.answer(screen.list, char1, char2, verdict)
                             }
                         },
+                        onUndo = { viewModel.undo(screen.list) },
                         onBack = viewModel::backToLists
                     )
                     is Screen.Ranking -> RankingScreen(

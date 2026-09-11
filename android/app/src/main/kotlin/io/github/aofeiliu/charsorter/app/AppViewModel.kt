@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.aofeiliu.charsorter.client.ApiException
 import io.github.aofeiliu.charsorter.client.CharSorterClient
 import io.github.aofeiliu.charsorter.client.CharacterList
+import io.github.aofeiliu.charsorter.client.Comparison
 import io.github.aofeiliu.charsorter.client.NextComparison
 import io.github.aofeiliu.charsorter.client.NotAuthenticatedException
 import io.github.aofeiliu.charsorter.client.Ranking
@@ -33,7 +34,16 @@ data class UiState(
     val error: String? = null,
     val lists: List<CharacterList> = emptyList(),
     val pending: NextComparison? = null,
-    val ranking: Ranking? = null
+    val ranking: Ranking? = null,
+    /**
+     * Comparisons this run has posted, oldest first, each still undoable.
+     *
+     * The API has no `GET` on `/comparisons`, so a record id is only ever
+     * seen in the `201` from our own `POST`. Undo therefore reaches back
+     * exactly as far as this process does and no further — the HTML page's
+     * Undo button, which re-queries the database, has no equivalent here.
+     */
+    val undoStack: List<Comparison> = emptyList()
 )
 
 /**
@@ -70,13 +80,34 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun loadLists() = runApiCall { loadListsBlocking() }
 
     fun openForSorting(list: CharacterList) {
-        _state.update { it.copy(screen = Screen.Sorting(list), pending = null) }
+        _state.update {
+            it.copy(screen = Screen.Sorting(list), pending = null, undoStack = emptyList())
+        }
         runApiCall { loadNextBlocking(list) }
     }
 
     fun answer(list: CharacterList, char1: Int, char2: Int, verdict: Verdict) = runApiCall {
-        client.submitComparison(list.id, char1, char2, verdict)
+        val record = client.submitComparison(list.id, char1, char2, verdict)
+        _state.update { it.copy(undoStack = it.undoStack + record) }
         loadNextBlocking(list)
+    }
+
+    /**
+     * Deletes the most recent comparison this run posted.
+     *
+     * The pair that comes back afterwards is a *different* question for a
+     * Glicko list, which samples `/next` from a softmax — undoing takes the
+     * record back, it does not re-ask what was just answered. The entry is
+     * popped only once the server has accepted the delete, so a failed undo
+     * stays on the stack and can be retried.
+     */
+    fun undo(list: CharacterList) {
+        val record = _state.value.undoStack.lastOrNull() ?: return
+        runApiCall {
+            client.deleteComparison(list.id, record.id)
+            _state.update { it.copy(undoStack = it.undoStack.dropLast(1)) }
+            loadNextBlocking(list)
+        }
     }
 
     private fun loadNextBlocking(list: CharacterList) {
@@ -91,7 +122,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun backToLists() {
-        _state.update { it.copy(screen = Screen.PickList, pending = null, ranking = null) }
+        _state.update {
+            it.copy(
+                screen = Screen.PickList,
+                pending = null,
+                ranking = null,
+                undoStack = emptyList()
+            )
+        }
         loadLists()
     }
 
