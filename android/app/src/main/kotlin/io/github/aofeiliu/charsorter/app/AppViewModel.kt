@@ -46,6 +46,16 @@ data class UiState(
      */
     val characters: List<Character>? = null,
     /**
+     * Whether the edit screen orders by the list's ranking rather than by
+     * when each character was added.
+     *
+     * Off by default because it is the expensive one: `GET /characters` just
+     * serializes rows, while the ranking replays the list's whole comparison
+     * history server-side. Opting in costs what opening the ranking screen
+     * costs; leaving it off costs nothing.
+     */
+    val editByScore: Boolean = false,
+    /**
      * Comparisons this run has posted, oldest first, each still undoable.
      *
      * The API has no `GET` on `/comparisons`, so a record id is only ever
@@ -138,8 +148,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openForEditing(list: CharacterList) {
-        _state.update { it.copy(screen = Screen.EditList(list), characters = null) }
+        _state.update {
+            it.copy(screen = Screen.EditList(list), characters = null, ranking = null)
+        }
         runApiCall { loadCharactersBlocking(list) }
+    }
+
+    /**
+     * Switches the edit screen between insertion order and ranked order.
+     *
+     * Turning it on fetches the ranking if this list's is not already held.
+     * Turning it off keeps whatever was fetched, so toggling back does not
+     * pay for the replay twice.
+     */
+    fun setEditSort(list: CharacterList, byScore: Boolean) {
+        _state.update { it.copy(editByScore = byScore) }
+        if (byScore && _state.value.ranking?.id != list.id) {
+            runApiCall { loadRankingBlocking(list) }
+        }
     }
 
     /** Re-reads the characters after a failed fetch left the screen empty. */
@@ -200,6 +226,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun loadCharactersBlocking(list: CharacterList) {
         _state.update { it.copy(characters = client.characters(list.id)) }
+        // Ratings move under every write -- a delete takes that character's
+        // comparisons with it and re-ranks everyone else -- so a held ranking
+        // is stale the moment anything changes.
+        if (_state.value.editByScore) {
+            loadRankingBlocking(list)
+        }
+    }
+
+    private fun loadRankingBlocking(list: CharacterList) {
+        _state.update { it.copy(ranking = client.ranking(list.id)) }
     }
 
     /** Re-asks for a comparison after a failed fetch left the screen empty. */

@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,30 +25,54 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.aofeiliu.charsorter.client.Character
 import io.github.aofeiliu.charsorter.client.CharacterList
+import io.github.aofeiliu.charsorter.client.Ranking
+
+/**
+ * One editable row, from either source the screen can draw on.
+ *
+ * `GET /characters` carries no rating and the ranking carries no more than
+ * name and fandom, so the row is whichever of the two is in play, with
+ * [annotation] present only in ranked order.
+ */
+private data class EditRow(
+    val id: Int,
+    val name: String,
+    val fandom: String,
+    val annotation: String? = null
+)
 
 /** Which modal the edit screen is showing, if any. */
 private sealed interface EditDialog {
     data object AddCharacter : EditDialog
     data object RenameList : EditDialog
     data object DeleteList : EditDialog
-    data class EditCharacter(val character: Character) : EditDialog
-    data class DeleteCharacter(val character: Character) : EditDialog
+    data class EditCharacter(val character: EditRow) : EditDialog
+    data class DeleteCharacter(val character: EditRow) : EditDialog
 }
 
 @Composable
 fun EditListScreen(
     list: CharacterList,
     characters: List<Character>?,
+    ranking: Ranking?,
+    byScore: Boolean,
     busy: Boolean,
     onAddCharacter: (String, String) -> Unit,
     onUpdateCharacter: (Int, String, String) -> Unit,
     onDeleteCharacter: (Int) -> Unit,
     onRenameList: (String) -> Unit,
     onDeleteList: () -> Unit,
+    onSetSort: (Boolean) -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit
 ) {
     var dialog by remember { mutableStateOf<EditDialog?>(null) }
+    val rows = when {
+        byScore -> ranking?.characters?.map {
+            EditRow(it.id, it.name, it.fandom, it.annotation)
+        }
+        else -> characters?.map { EditRow(it.id, it.name, it.fandom) }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -72,12 +97,23 @@ fun EditListScreen(
                 Text("Delete list", color = MaterialTheme.colorScheme.error)
             }
         }
-        Button(
-            onClick = { dialog = EditDialog.AddCharacter },
-            enabled = !busy,
-            modifier = Modifier.padding(top = 8.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Add character")
+            Button(
+                onClick = { dialog = EditDialog.AddCharacter },
+                enabled = !busy
+            ) {
+                Text("Add character")
+            }
+            FilterChip(
+                selected = byScore,
+                onClick = { onSetSort(!byScore) },
+                enabled = !busy,
+                label = { Text("By score") }
+            )
         }
 
         when {
@@ -87,7 +123,7 @@ fun EditListScreen(
             ) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
             }
-            characters == null -> Column(
+            rows == null -> Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -97,12 +133,12 @@ fun EditListScreen(
                     Text("Retry")
                 }
             }
-            characters.isEmpty() -> Text(
+            rows.isEmpty() -> Text(
                 "No characters yet.",
                 modifier = Modifier.padding(top = 24.dp)
             )
             else -> LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
-                items(characters, key = { it.id }) { character ->
+                items(rows, key = { it.id }) { character ->
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -111,6 +147,13 @@ fun EditListScreen(
                         Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                             Text(character.name, style = MaterialTheme.typography.titleMedium)
                             Text(character.fandom, style = MaterialTheme.typography.bodySmall)
+                        }
+                        character.annotation?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
                         }
                         TextButton(onClick = { dialog = EditDialog.EditCharacter(character) }) {
                             Text("Edit")

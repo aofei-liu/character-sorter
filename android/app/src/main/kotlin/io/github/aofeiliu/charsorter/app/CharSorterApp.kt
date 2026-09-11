@@ -65,6 +65,8 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                     is Screen.EditList -> EditListScreen(
                         list = screen.list,
                         characters = state.characters,
+                        ranking = state.ranking,
+                        byScore = state.editByScore,
                         busy = state.busy,
                         onAddCharacter = { name, fandom ->
                             viewModel.addCharacter(screen.list, name, fandom)
@@ -75,6 +77,7 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                         onDeleteCharacter = { viewModel.deleteCharacter(screen.list, it) },
                         onRenameList = { viewModel.renameList(screen.list, it) },
                         onDeleteList = { viewModel.deleteList(screen.list) },
+                        onSetSort = { viewModel.setEditSort(screen.list, it) },
                         onRetry = { viewModel.loadCharacters(screen.list) },
                         onBack = viewModel::backToLists
                     )
