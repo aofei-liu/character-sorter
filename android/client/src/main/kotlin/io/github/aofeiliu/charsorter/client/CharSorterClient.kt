@@ -98,6 +98,130 @@ class CharSorterClient(
         get<ListsResponse>(url("api/lists")).lists
 
     /**
+     * `POST /api/lists` — creates a list.
+     *
+     * [controllerType] is the wire value, `"IS"` for insertion sort or `"GL"`
+     * for Glicko; the server validates it against the model's choices and
+     * answers a bad one with [InvalidRequestException].
+     *
+     * [showImages] is only accepted when the server has an image-search key
+     * configured: `MaybeAppendShowImages` drops the field from the form
+     * otherwise, and the API's binder ignores keys the form does not declare.
+     * So passing it is safe anywhere, but is **silently ignored** on a
+     * deployment without a key — read [CharacterList.showImages] on the result
+     * rather than assuming the request took effect.
+     */
+    fun createList(
+        title: String,
+        controllerType: String,
+        showImages: Boolean? = null
+    ): CharacterList = post(
+        url("api/lists"),
+        buildJsonObject {
+            put("title", title)
+            put("controller_type", controllerType)
+            if (showImages != null) {
+                put("show_images", showImages)
+            }
+        }
+    )
+
+    /**
+     * `PATCH /api/lists/<id>` — edits a list, leaving omitted fields alone.
+     *
+     * Every argument defaults to null meaning "do not send", which is what
+     * makes this a partial update. See [createList] for [controllerType]'s
+     * wire values and for when [showImages] is quietly ignored.
+     */
+    fun updateList(
+        listId: Int,
+        title: String? = null,
+        controllerType: String? = null,
+        showImages: Boolean? = null
+    ): CharacterList {
+        require(title != null || controllerType != null || showImages != null) {
+            "updateList needs at least one field to change."
+        }
+        return patch(
+            url("api/lists/$listId"),
+            buildJsonObject {
+                if (title != null) put("title", title)
+                if (controllerType != null) put("controller_type", controllerType)
+                if (showImages != null) put("show_images", showImages)
+            }
+        )
+    }
+
+    /**
+     * `DELETE /api/lists/<id>` — deletes a list. **Not recoverable.**
+     *
+     * Every foreign key into a list cascades, so this takes the list's
+     * characters and its entire `SortRecord` history with it. There is no
+     * surface in this API that can put any of it back.
+     */
+    fun deleteList(listId: Int) {
+        call(Request.Builder().url(url("api/lists/$listId")).delete().build()) { }
+    }
+
+    /**
+     * `GET /api/lists/<id>/characters` — the list's characters, oldest first.
+     *
+     * [Character.image] is always null here whatever the list's `show_images`
+     * setting: this endpoint serializes characters without consulting it.
+     * Images arrive only on [nextComparison].
+     */
+    fun characters(listId: Int): List<Character> =
+        get<CharactersResponse>(url("api/lists/$listId/characters")).characters
+
+    /** `POST /api/lists/<id>/characters` — adds a character to the list. */
+    fun addCharacter(listId: Int, name: String, fandom: String): Character = post(
+        url("api/lists/$listId/characters"),
+        buildJsonObject {
+            put("name", name)
+            put("fandom", fandom)
+        }
+    )
+
+    /**
+     * `PATCH /api/lists/<id>/characters/<char_id>` — renames a character.
+     *
+     * A null argument means "do not send", so editing the name leaves the
+     * fandom untouched. Editing is history-safe: `SortRecord` references the
+     * character by id, so past comparisons stay attached to the renamed row.
+     */
+    fun updateCharacter(
+        listId: Int,
+        charId: Int,
+        name: String? = null,
+        fandom: String? = null
+    ): Character {
+        require(name != null || fandom != null) {
+            "updateCharacter needs at least one field to change."
+        }
+        return patch(
+            url("api/lists/$listId/characters/$charId"),
+            buildJsonObject {
+                if (name != null) put("name", name)
+                if (fandom != null) put("fandom", fandom)
+            }
+        )
+    }
+
+    /**
+     * `DELETE /api/lists/<id>/characters/<char_id>` — **not a local edit.**
+     *
+     * `SortRecord.char1` and `char2` both cascade, so removing one character
+     * also destroys every comparison it ever took part in. Ratings are
+     * recomputed by replaying what survives, so this changes the standing of
+     * *every other character in the list*, not just the one removed. Deleting
+     * is not the way to hide someone from a ranking.
+     */
+    fun deleteCharacter(listId: Int, charId: Int) {
+        val target = url("api/lists/$listId/characters/$charId")
+        call(Request.Builder().url(target).delete().build()) { }
+    }
+
+    /**
      * `GET /api/lists/<id>` — the ranked order, with annotations and progress.
      *
      * Every call replays the list's entire comparison history server-side, so
@@ -168,6 +292,11 @@ class CharSorterClient(
 
     private inline fun <reified T> post(target: HttpUrl, body: JsonObject): T =
         call(Request.Builder().url(target).post(body.toRequestBody()).build()) {
+            json.decodeFromString<T>(it)
+        }
+
+    private inline fun <reified T> patch(target: HttpUrl, body: JsonObject): T =
+        call(Request.Builder().url(target).patch(body.toRequestBody()).build()) {
             json.decodeFromString<T>(it)
         }
 

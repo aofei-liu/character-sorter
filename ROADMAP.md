@@ -611,7 +611,7 @@ wanted is blocked on the server, not on effort.
 
 | # | Item | Size | `:client` work | Blocked on |
 | --- | --- | --- | --- | --- |
-| 1 | List and character editing | Large | Substantial | Nothing |
+| 1 | List and character editing | Large | Substantial | **Done** (2026-09-11) |
 | 2 | Per-character ranking history plot | Large | Yes | An upstream API change |
 | 3 | Whole-list Glicko chart | ~200 | Yes | A readability decision |
 | 4 | Small hardening | ~50 | None | Nothing |
@@ -643,6 +643,25 @@ That split is a feature here, not a chore: `:client` is the only module any
 session on this box can actually verify, so putting the request shaping,
 error mapping and field-level validation there means most of this entry is
 testable before it ever reaches a screen.
+
+**Done 2026-09-11**, as two commits on one branch rather than the two PRs
+first planned — the `:client` half was held back so the owner could test the
+whole feature on a phone before any of it was reviewed. `:client` gained seven
+methods and 11 MockWebServer tests; `:app` gained an edit screen reached from
+a third per-list action, with add, edit and delete for characters and rename
+and delete for the list. Verified on device: a list created and deleted end to
+end, and both orderings of the character rows.
+
+The edit screen can also order by score, which is not free and so is a chip
+rather than the default. `GET /characters` carries no rating at all — the
+ranking endpoint is the only place a score exists, and it replays the list's
+whole comparison history server-side. Ranked order is therefore refetched
+after every write while the chip is on, since a delete re-ranks everyone.
+
+Two capabilities exist in `:client` but are deliberately not exposed in the
+UI: changing a list's `controller_type` after creation, which is meaningless
+once comparisons exist, and `show_images`, which belongs with the deferred
+images entry.
 
 These are also the destructive endpoints, run against the live production
 database. The standing rule applies: smoke-test only against the two

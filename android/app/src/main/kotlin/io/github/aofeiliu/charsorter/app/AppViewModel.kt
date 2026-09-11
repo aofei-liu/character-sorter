@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.aofeiliu.charsorter.client.ApiException
 import io.github.aofeiliu.charsorter.client.CharSorterClient
+import io.github.aofeiliu.charsorter.client.Character
 import io.github.aofeiliu.charsorter.client.CharacterList
 import io.github.aofeiliu.charsorter.client.Comparison
 import io.github.aofeiliu.charsorter.client.NextComparison
@@ -26,6 +27,7 @@ sealed interface Screen {
     data object PickList : Screen
     data class Sorting(val list: CharacterList) : Screen
     data class Ranking(val list: CharacterList) : Screen
+    data class EditList(val list: CharacterList) : Screen
 }
 
 data class UiState(
@@ -35,6 +37,24 @@ data class UiState(
     val lists: List<CharacterList> = emptyList(),
     val pending: NextComparison? = null,
     val ranking: Ranking? = null,
+    /**
+     * The characters being edited, or null when they have not loaded.
+     *
+     * Null rather than empty on purpose: a list with no characters yet and a
+     * list whose fetch failed are different states, and rendering both as an
+     * empty screen would hide the failure with no way to retry.
+     */
+    val characters: List<Character>? = null,
+    /**
+     * Whether the edit screen orders by the list's ranking rather than by
+     * when each character was added.
+     *
+     * Off by default because it is the expensive one: `GET /characters` just
+     * serializes rows, while the ranking replays the list's whole comparison
+     * history server-side. Opting in costs what opening the ranking screen
+     * costs; leaving it off costs nothing.
+     */
+    val editByScore: Boolean = false,
     /**
      * Comparisons this run has posted, oldest first, each still undoable.
      *
@@ -127,6 +147,97 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun openForEditing(list: CharacterList) {
+        _state.update {
+            it.copy(screen = Screen.EditList(list), characters = null, ranking = null)
+        }
+        runApiCall { loadCharactersBlocking(list) }
+    }
+
+    /**
+     * Switches the edit screen between insertion order and ranked order.
+     *
+     * Turning it on fetches the ranking if this list's is not already held.
+     * Turning it off keeps whatever was fetched, so toggling back does not
+     * pay for the replay twice.
+     */
+    fun setEditSort(list: CharacterList, byScore: Boolean) {
+        _state.update { it.copy(editByScore = byScore) }
+        if (byScore && _state.value.ranking?.id != list.id) {
+            runApiCall { loadRankingBlocking(list) }
+        }
+    }
+
+    /** Re-reads the characters after a failed fetch left the screen empty. */
+    fun loadCharacters(list: CharacterList) = runApiCall { loadCharactersBlocking(list) }
+
+    fun addCharacter(list: CharacterList, name: String, fandom: String) = runApiCall {
+        client.addCharacter(list.id, name, fandom)
+        loadCharactersBlocking(list)
+    }
+
+    fun updateCharacter(
+        list: CharacterList,
+        charId: Int,
+        name: String,
+        fandom: String
+    ) = runApiCall {
+        client.updateCharacter(list.id, charId, name = name, fandom = fandom)
+        loadCharactersBlocking(list)
+    }
+
+    /**
+     * Deletes a character, and with it every comparison it took part in.
+     *
+     * `SortRecord.char1` and `char2` both cascade, so this rewrites the
+     * list's history and changes where every *other* character ranks. The
+     * confirmation in the UI says so; this is not an undoable edit.
+     */
+    fun deleteCharacter(list: CharacterList, charId: Int) = runApiCall {
+        client.deleteCharacter(list.id, charId)
+        loadCharactersBlocking(list)
+    }
+
+    fun createList(title: String, controllerType: String) = runApiCall {
+        client.createList(title, controllerType)
+        loadListsBlocking()
+    }
+
+    fun renameList(list: CharacterList, title: String) = runApiCall {
+        client.updateList(list.id, title = title)
+        loadListsBlocking()
+        _state.update { it.copy(screen = Screen.EditList(list.copy(title = title))) }
+    }
+
+    /** Deletes a list, its characters and its entire comparison history. */
+    fun deleteList(list: CharacterList) = runApiCall {
+        client.deleteList(list.id)
+        _state.update { it.copy(screen = Screen.PickList, characters = null) }
+        loadListsBlocking()
+    }
+
+    /**
+     * Re-reads the characters from the server after every write.
+     *
+     * A round trip per edit, deliberately: the server owns ids, ordering and
+     * validation, and these are not hot paths. Patching the local list
+     * instead would invent a second source of truth for the sake of a
+     * request nobody is waiting on.
+     */
+    private fun loadCharactersBlocking(list: CharacterList) {
+        _state.update { it.copy(characters = client.characters(list.id)) }
+        // Ratings move under every write -- a delete takes that character's
+        // comparisons with it and re-ranks everyone else -- so a held ranking
+        // is stale the moment anything changes.
+        if (_state.value.editByScore) {
+            loadRankingBlocking(list)
+        }
+    }
+
+    private fun loadRankingBlocking(list: CharacterList) {
+        _state.update { it.copy(ranking = client.ranking(list.id)) }
+    }
+
     /** Re-asks for a comparison after a failed fetch left the screen empty. */
     fun loadNext(list: CharacterList) = runApiCall { loadNextBlocking(list) }
 
@@ -147,6 +258,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 screen = Screen.PickList,
                 pending = null,
                 ranking = null,
+                characters = null,
                 undoStack = emptyList()
             )
         }
