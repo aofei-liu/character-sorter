@@ -67,15 +67,15 @@ fun SortScreen(
                 val char1 = pending.char1
                 val char2 = pending.char2
                 if (char1 != null && char2 != null) {
-                    Row(modifier = Modifier.weight(1f).padding(top = 12.dp)) {
+                    Column(modifier = Modifier.weight(1f).padding(top = 12.dp)) {
                         ComparisonCard(
                             character = char1,
-                            modifier = Modifier.weight(1f).fillMaxSize().padding(end = 6.dp),
+                            modifier = Modifier.weight(1f).fillMaxWidth().padding(bottom = 6.dp),
                             onClick = { onAnswer(Verdict.CHAR1_WINS) }
                         )
                         ComparisonCard(
                             character = char2,
-                            modifier = Modifier.weight(1f).fillMaxSize().padding(start = 6.dp),
+                            modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 6.dp),
                             onClick = { onAnswer(Verdict.CHAR2_WINS) }
                         )
                     }
