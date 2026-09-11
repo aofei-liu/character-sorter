@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ascending-bars mark from the imported design, centered in the
+     adaptive-icon safe zone (the outer ~18dp on each side is cropped by
+     the system mask on most launcher shapes). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M25,58 L39,58 L39,80 L25,80 Z" android:fillColor="#C3BBFD" />
+    <path android:pathData="M47,44 L61,44 L61,80 L47,80 Z" android:fillColor="#A99BE6" />
+    <path android:pathData="M69,28 L83,28 L83,80 L69,80 Z" android:fillColor="#9184D9" />
+</vector>
