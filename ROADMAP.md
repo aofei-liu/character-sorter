@@ -495,6 +495,61 @@ those — so a script must `. ~/opt/android-env.sh` explicitly. Footprint is
 Validated: the Gradle wrapper (8.14.3) downloaded and ran `:client:test` green
 on the new JDK.
 
+### P1 progress (2026-09-10): `:app` wired in, all four screens compile and run
+
+`settings.gradle.kts` now includes `:app`; `android/app` is a Compose module
+(AGP 8.7.3, Kotlin's `org.jetbrains.kotlin.plugin.compose` — no separate
+Compose Compiler version to track, since Kotlin 2.0 folded it into the
+K2-aligned Gradle plugin) depending on `:client`, with `minSdk 26`,
+`compileSdk 34` and `applicationId io.github.aofeiliu.charsorter` as decided
+above.
+
+**Architecture:** a sealed `Screen` (`Login`, `PickList`, `Sorting`, `Ranking`)
+held in one `AppViewModel`, switched on in `CharSorterApp`'s top-level
+composable — no Navigation-Compose dependency; four screens don't earn it.
+`AppViewModel` owns the single `CharSorterClient` instance and runs every
+client call (blocking by design) on `Dispatchers.IO` via `viewModelScope`.
+`NotAuthenticatedException` drops the state back to `Login` and clears the
+stored session — retrying a stale 401 without a fresh login would just repeat
+it. Every other `ApiException`/`IOException` surfaces in a dismissable
+Snackbar shared across all four screens. `SessionStore` persists
+`cookieJar.save()` in `SharedPreferences` across process restarts; only the
+cookies are stored, never the password, per `SessionCookieJar`'s own
+docstring.
+
+**Verified on the WSL box**, not a cloud session — this machine's
+`dl.google.com`/Google-Maven reachability is what makes any of this possible,
+per "Toolchain lives on the WSL box" above:
+
+- `./gradlew :app:assembleDebug` and `:client:test` both pass.
+- Booted `charsorter34` headless (`-gpu swiftshader_indirect -no-window
+  -memory 1536`), installed the debug APK, and screenshotted the running app
+  via `adb exec-out screencap` — the login screen renders correctly (title,
+  two fields, a "Log in" button that is correctly disabled while either field
+  is empty).
+- The emulator was torn down immediately after the screenshot rather than
+  left running. **This box's free RAM is tighter than the P1 decisions
+  assumed:** `free -h` reports 7.7 GiB total, not the 16 GiB in
+  `~/.claude/CLAUDE.md`'s hardware table — evidently a `.wslconfig` cap, not
+  yet reconciled with that doc — and booting the emulator alongside the
+  already-running Gradle/Kotlin daemons pushed available memory to ~1.1 GiB
+  with swap engaged. It booted and ran without failing, but there is no
+  headroom for a second concurrent job (another emulator instance, a second
+  Gradle build, or Claude Science) while it's up.
+- **Not attempted:** logging in against the real
+  `charsorter.lndyn.com` account. That needs real credentials, which no
+  session here holds, and doing it from a screen that had never been
+  human-reviewed felt like the wrong first test of a live-writing credential
+  path. The auth handshake itself is already covered by `:client`'s
+  MockWebServer tests and the `LiveSmokeTest` read-only probes; this is only
+  "does the UI screen call it correctly," and that is unverified.
+
+**Next step:** either wire real credentials through once available (a local
+`local.properties`-style entry, never committed) to confirm the handshake
+from `:app` end to end, or move on to hardening what's here — e.g. surfacing
+`InvalidRequestException.fields` on the login form instead of the generic
+Snackbar text, which login's own 400 path never actually triggers today.
+
 Two corrections to the P1 decisions above:
 
 - **KVM was not usable out of the box.** `/dev/kvm` is present but is
