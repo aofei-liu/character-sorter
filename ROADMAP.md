@@ -633,6 +633,13 @@ session on this box can actually verify, so putting the request shaping,
 error mapping and field-level validation there means most of this entry is
 testable before it ever reaches a screen.
 
+**This entry is therefore two PRs, not one** — the only entry in the queue
+that is. The `:client` half landed first and stands alone: seven methods, 11
+MockWebServer tests, nothing in `:app` touched. The UI half follows. Splitting
+on that seam keeps every line that can be tested in a diff whose tests
+actually ran, rather than burying it in a larger one that no session can
+verify past the login screen.
+
 These are also the destructive endpoints, run against the live production
 database. The standing rule applies: smoke-test only against the two
 disposable lists confirmed on 2026-09-02, never against the list holding the
