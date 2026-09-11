@@ -1,0 +1,135 @@
+package io.github.aofeiliu.charsorter.app
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import io.github.aofeiliu.charsorter.client.ApiException
+import io.github.aofeiliu.charsorter.client.CharSorterClient
+import io.github.aofeiliu.charsorter.client.CharacterList
+import io.github.aofeiliu.charsorter.client.NextComparison
+import io.github.aofeiliu.charsorter.client.NotAuthenticatedException
+import io.github.aofeiliu.charsorter.client.Ranking
+import io.github.aofeiliu.charsorter.client.Verdict
+import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** One of the four screens the P1 prototype offers; see ROADMAP.md, "Scope". */
+sealed interface Screen {
+    data object Login : Screen
+    data object PickList : Screen
+    data class Sorting(val list: CharacterList) : Screen
+    data class Ranking(val list: CharacterList) : Screen
+}
+
+data class UiState(
+    val screen: Screen = Screen.Login,
+    val busy: Boolean = false,
+    val error: String? = null,
+    val lists: List<CharacterList> = emptyList(),
+    val pending: NextComparison? = null,
+    val ranking: Ranking? = null
+)
+
+/**
+ * Owns the one [CharSorterClient] instance and every prototype screen's
+ * state. The client's calls are blocking by design, so each one runs on
+ * [Dispatchers.IO]; nothing here touches the UI thread except the state
+ * update itself.
+ */
+class AppViewModel(application: Application) : AndroidViewModel(application) {
+    private val client = CharSorterClient()
+    private val sessionStore = SessionStore(application)
+
+    private val _state = MutableStateFlow(UiState())
+    val state: StateFlow<UiState> = _state.asStateFlow()
+
+    init {
+        val cookies = sessionStore.restore()
+        if (cookies.isNotEmpty()) {
+            client.cookieJar.restore(cookies)
+        }
+        if (client.isLoggedIn) {
+            _state.update { it.copy(screen = Screen.PickList) }
+            loadLists()
+        }
+    }
+
+    fun login(username: String, password: String) = runApiCall {
+        client.login(username, password)
+        sessionStore.save(client.cookieJar.save())
+        _state.update { it.copy(screen = Screen.PickList) }
+        loadListsBlocking()
+    }
+
+    fun loadLists() = runApiCall { loadListsBlocking() }
+
+    fun openForSorting(list: CharacterList) {
+        _state.update { it.copy(screen = Screen.Sorting(list), pending = null) }
+        runApiCall { loadNextBlocking(list) }
+    }
+
+    fun answer(list: CharacterList, char1: Int, char2: Int, verdict: Verdict) = runApiCall {
+        client.submitComparison(list.id, char1, char2, verdict)
+        loadNextBlocking(list)
+    }
+
+    private fun loadNextBlocking(list: CharacterList) {
+        val next = client.nextComparison(list.id)
+        _state.update { it.copy(pending = next) }
+    }
+
+    fun openForRanking(list: CharacterList) = runApiCall {
+        _state.update { it.copy(screen = Screen.Ranking(list)) }
+        val ranking = client.ranking(list.id)
+        _state.update { it.copy(ranking = ranking) }
+    }
+
+    fun backToLists() {
+        _state.update { it.copy(screen = Screen.PickList, pending = null, ranking = null) }
+        loadLists()
+    }
+
+    fun logout() {
+        client.logout()
+        sessionStore.clear()
+        _state.update { UiState(screen = Screen.Login) }
+    }
+
+    fun dismissError() = _state.update { it.copy(error = null) }
+
+    private fun loadListsBlocking() {
+        val lists = client.lists()
+        _state.update { it.copy(lists = lists) }
+    }
+
+    /**
+     * Runs [block] on [Dispatchers.IO], surfacing any failure as [UiState.error].
+     *
+     * [NotAuthenticatedException] additionally drops the client back to the
+     * login screen: the stored session is stale, so retrying without a fresh
+     * login would just repeat the same 401.
+     */
+    private fun runApiCall(block: suspend () -> Unit) {
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { block() }
+            } catch (err: NotAuthenticatedException) {
+                sessionStore.clear()
+                _state.update { UiState(screen = Screen.Login, error = err.message) }
+            } catch (err: ApiException) {
+                _state.update { it.copy(error = err.message) }
+            } catch (err: IOException) {
+                _state.update { it.copy(error = "Network error: ${err.message}") }
+            } finally {
+                _state.update { it.copy(busy = false) }
+            }
+        }
+    }
+}
