@@ -51,6 +51,7 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                             }
                         },
                         onUndo = { viewModel.undo(screen.list) },
+                        onRetry = { viewModel.loadNext(screen.list) },
                         onBack = viewModel::backToLists
                     )
                     is Screen.Ranking -> RankingScreen(

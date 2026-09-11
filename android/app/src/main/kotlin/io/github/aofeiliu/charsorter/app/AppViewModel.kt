@@ -86,9 +86,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         runApiCall { loadNextBlocking(list) }
     }
 
+    /**
+     * Answers the pending comparison, then asks for the next one.
+     *
+     * The answered pair is dropped in the same update that banks the record,
+     * and only once the `POST` has succeeded. If the *following* `/next` call
+     * fails, the screen must not be left offering the pair that was just
+     * committed: answering it again would write a second `SortRecord` for the
+     * same comparison, which `compute_ratings` would replay — silently
+     * skewing the list. A failed `POST` leaves [UiState.pending] alone, since
+     * nothing was recorded and re-answering is then correct.
+     */
     fun answer(list: CharacterList, char1: Int, char2: Int, verdict: Verdict) = runApiCall {
         val record = client.submitComparison(list.id, char1, char2, verdict)
-        _state.update { it.copy(undoStack = it.undoStack + record) }
+        _state.update { it.copy(pending = null, undoStack = it.undoStack + record) }
         loadNextBlocking(list)
     }
 
@@ -100,15 +111,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * record back, it does not re-ask what was just answered. The entry is
      * popped only once the server has accepted the delete, so a failed undo
      * stays on the stack and can be retried.
+     *
+     * The pending pair is dropped alongside the pop for the same reason as in
+     * [answer], though the risk here is weaker: a pair left over from a failed
+     * `/next` was never answered, so re-answering it would write a first
+     * record rather than a duplicate. It is cleared anyway, because that pair
+     * was chosen against ratings the undo has since changed.
      */
     fun undo(list: CharacterList) {
         val record = _state.value.undoStack.lastOrNull() ?: return
         runApiCall {
             client.deleteComparison(list.id, record.id)
-            _state.update { it.copy(undoStack = it.undoStack.dropLast(1)) }
+            _state.update { it.copy(pending = null, undoStack = it.undoStack.dropLast(1)) }
             loadNextBlocking(list)
         }
     }
+
+    /** Re-asks for a comparison after a failed fetch left the screen empty. */
+    fun loadNext(list: CharacterList) = runApiCall { loadNextBlocking(list) }
 
     private fun loadNextBlocking(list: CharacterList) {
         val next = client.nextComparison(list.id)

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,7 @@ fun SortScreen(
     canUndo: Boolean,
     onAnswer: (Verdict) -> Unit,
     onUndo: () -> Unit,
+    onRetry: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -59,11 +61,24 @@ fun SortScreen(
         }
 
         when {
-            pending == null || busy -> Column(
+            busy -> Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.Center
             ) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+            }
+            pending == null -> Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "Couldn't load the next comparison.",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) {
+                    Text("Retry")
+                }
             }
             pending.done -> Column(
                 modifier = Modifier.fillMaxSize(),
