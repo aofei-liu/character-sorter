@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.aofeiliu.charsorter.app.ui.CharSorterTheme
 import io.github.aofeiliu.charsorter.app.ui.EditListScreen
+import io.github.aofeiliu.charsorter.app.ui.ListChartScreen
 import io.github.aofeiliu.charsorter.app.ui.ListPickerScreen
 import io.github.aofeiliu.charsorter.app.ui.LoginScreen
 import io.github.aofeiliu.charsorter.app.ui.RankingScreen
@@ -74,7 +75,15 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                         ranking = state.ranking,
                         spreads = state.spreads,
                         onOpenCharacter = { viewModel.openForTrend(screen.list, it) },
+                        onOpenChart = { viewModel.openForChart(screen.list) },
                         onBack = viewModel::backToLists
+                    )
+                    is Screen.ListChart -> ListChartScreen(
+                        list = screen.list,
+                        graph = state.graph,
+                        busy = state.busy,
+                        onRetry = { viewModel.loadGraph(screen.list) },
+                        onBack = { viewModel.back() }
                     )
                     is Screen.CharacterTrend -> TrendScreen(
                         list = screen.list,
