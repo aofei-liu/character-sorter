@@ -1,5 +1,6 @@
 package io.github.aofeiliu.charsorter.app
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Snackbar
@@ -19,11 +20,20 @@ import io.github.aofeiliu.charsorter.app.ui.ListPickerScreen
 import io.github.aofeiliu.charsorter.app.ui.LoginScreen
 import io.github.aofeiliu.charsorter.app.ui.RankingScreen
 import io.github.aofeiliu.charsorter.app.ui.SortScreen
+import io.github.aofeiliu.charsorter.app.ui.TrendScreen
 import io.github.aofeiliu.charsorter.app.ui.charSorterBackground
 
 @Composable
 fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
+
+    // Every screen but the two roots unwinds one step; at a root the handler
+    // stays disabled so back leaves the app rather than doing nothing.
+    BackHandler(
+        enabled = state.screen !is Screen.Login && state.screen !is Screen.PickList
+    ) {
+        viewModel.back()
+    }
 
     CharSorterTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
@@ -62,7 +72,19 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                     is Screen.Ranking -> RankingScreen(
                         list = screen.list,
                         ranking = state.ranking,
+                        spreads = state.spreads,
+                        onOpenCharacter = { viewModel.openForTrend(screen.list, it) },
                         onBack = viewModel::backToLists
+                    )
+                    is Screen.CharacterTrend -> TrendScreen(
+                        list = screen.list,
+                        character = screen.character,
+                        history = state.history,
+                        busy = state.busy,
+                        onRetry = {
+                            viewModel.loadHistory(screen.list, screen.character.id)
+                        },
+                        onBack = { viewModel.back() }
                     )
                     is Screen.EditList -> EditListScreen(
                         list = screen.list,

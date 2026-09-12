@@ -240,6 +240,26 @@ class CharSorterClient(
     fun nextComparison(listId: Int): NextComparison = get(url("api/lists/$listId/next"))
 
     /**
+     * `GET /api/lists/<id>/characters/<id>/history` — how one character's
+     * rating got where it is, a point per comparison it took part in.
+     *
+     * As with [ranking], the server replays the list's whole history to answer
+     * this, so fetch it when something changed rather than on a timer. A list
+     * whose controller keeps no rating (insertion sort) 404s.
+     */
+    fun characterHistory(listId: Int, charId: Int): RatingHistory =
+        get(url("api/lists/$listId/characters/$charId/history"))
+
+    /**
+     * `GET /api/lists/<id>/graph` — every character's rating and 2 * rd.
+     *
+     * The only route that exposes the uncertainty behind a ranking: the
+     * ranking's own annotation has already folded it in. A list whose
+     * controller has no graph 404s.
+     */
+    fun graph(listId: Int): Graph = get(url("api/lists/$listId/graph"))
+
+    /**
      * `POST /api/lists/<id>/comparisons` — answers one comparison.
      *
      * [timestamp] is for offline queueing and may be backdated, which is safe

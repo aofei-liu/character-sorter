@@ -70,6 +70,50 @@ data class Ranking(
     val characters: List<RankedCharacter> = emptyList()
 )
 
+/** One point in a character's rating history, after one of its comparisons. */
+@Serializable
+data class RatingPoint(
+    val timestamp: String,
+    val rating: Double,
+    val rd: Double,
+    val opponent: Character,
+    /** Positive when this character won, whichever side of the record it sat on. */
+    val value: Int
+)
+
+/**
+ * A character's rating and how it got there:
+ * `GET /api/lists/<id>/characters/<id>/history`.
+ *
+ * [rating] and [rd] are the raw Glicko pair, the same quantity the points
+ * carry. Neither is the number the ranking shows: that annotation is the
+ * pessimistic lower bound, `rating - 2 * rd`, which is also the order the
+ * list is sorted in.
+ */
+@Serializable
+data class RatingHistory(
+    val id: Int,
+    val name: String,
+    val fandom: String,
+    val rating: Double,
+    val rd: Double,
+    val history: List<RatingPoint> = emptyList()
+)
+
+/**
+ * `GET /api/lists/<id>/graph` — every character's rating and 2 * rd.
+ *
+ * The arrays are parallel and sorted by `rating - 2 * rd` descending, which
+ * is the order [Ranking.characters] comes in too.
+ */
+@Serializable
+data class Graph(
+    @SerialName("graph_type") val graphType: String,
+    val characters: List<String> = emptyList(),
+    val ratings: List<Double> = emptyList(),
+    @SerialName("double_rds") val doubleRds: List<Double> = emptyList()
+)
+
 /**
  * The pair to ask next: `GET /api/lists/<id>/next`.
  *
