@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
@@ -207,9 +208,15 @@ private fun MatchRow(point: RatingPoint) {
 @Composable
 private fun RatingChart(points: List<RatingPoint>) {
     val plotted = remember(points) { downsample(points, MAX_PLOT_POINTS) }
-    val low = plotted.minOf { it.rating - 2 * it.rd }.coerceAtMost(DEFAULT_RATING)
-    val high = plotted.maxOf { it.rating + 2 * it.rd }.coerceAtLeast(DEFAULT_RATING)
-    val span = (high - low).coerceAtLeast(1.0)
+    // Scaled to the line, not the band: the first matches carry an rd near
+    // 350, and letting that set the range squashes the trend into a strip.
+    // The band clips at the edges instead.
+    val lowest = plotted.minOf { it.rating }
+    val highest = plotted.maxOf { it.rating }
+    val pad = ((highest - lowest) * 0.08).coerceAtLeast(20.0)
+    val low = lowest - pad
+    val high = highest + pad
+    val span = high - low
 
     Column(
         modifier = Modifier
@@ -224,11 +231,17 @@ private fun RatingChart(points: List<RatingPoint>) {
             .padding(16.dp)
     ) {
         Text(
-            high.roundToInt().toString(),
+            highest.roundToInt().toString(),
             style = CharSorterType.FandomSmall,
             color = CharSorterColor.Muted
         )
-        Canvas(modifier = Modifier.fillMaxWidth().height(180.dp).padding(vertical = 6.dp)) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .padding(vertical = 6.dp)
+                .clipToBounds()
+        ) {
             fun xOf(index: Int): Float = when {
                 plotted.size == 1 -> size.width / 2f
                 else -> size.width * index / (plotted.size - 1).toFloat()
@@ -236,13 +249,15 @@ private fun RatingChart(points: List<RatingPoint>) {
             fun yOf(value: Double): Float =
                 (size.height * (1.0 - (value - low) / span)).toFloat()
 
-            val baseline = yOf(DEFAULT_RATING)
-            drawLine(
-                color = CharSorterColor.Muted.copy(alpha = 0.35f),
-                start = Offset(0f, baseline),
-                end = Offset(size.width, baseline),
-                strokeWidth = 1.dp.toPx()
-            )
+            if (DEFAULT_RATING in low..high) {
+                val baseline = yOf(DEFAULT_RATING)
+                drawLine(
+                    color = CharSorterColor.Muted.copy(alpha = 0.35f),
+                    start = Offset(0f, baseline),
+                    end = Offset(size.width, baseline),
+                    strokeWidth = 1.dp.toPx()
+                )
+            }
 
             if (plotted.size > 1) {
                 val band = Path()
@@ -285,7 +300,7 @@ private fun RatingChart(points: List<RatingPoint>) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                low.roundToInt().toString(),
+                lowest.roundToInt().toString(),
                 style = CharSorterType.FandomSmall,
                 color = CharSorterColor.Muted
             )
