@@ -29,6 +29,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.aofeiliu.charsorter.client.CharacterList
@@ -210,6 +212,10 @@ private fun MatchRow(point: RatingPoint) {
 @Composable
 private fun RatingChart(points: List<RatingPoint>) {
     val plotted = remember(points) { downsample(points, MAX_PLOT_POINTS) }
+    val measurer = rememberTextMeasurer()
+    val baselineStyle = remember {
+        CharSorterType.FandomSmall.copy(color = CharSorterColor.Muted.copy(alpha = 0.75f))
+    }
     // Scaled to the line, not the band: the first matches carry an rd near
     // 350, and letting that set the range squashes the trend into a strip.
     // The band clips at the edges instead.
@@ -253,11 +259,22 @@ private fun RatingChart(points: List<RatingPoint>) {
 
             if (DEFAULT_RATING in low..high) {
                 val baseline = yOf(DEFAULT_RATING)
+                val label = measurer.measure(
+                    DEFAULT_RATING.roundToInt().toString(), baselineStyle
+                )
                 drawLine(
                     color = CharSorterColor.Muted.copy(alpha = 0.35f),
-                    start = Offset(0f, baseline),
+                    start = Offset(label.size.width + 6.dp.toPx(), baseline),
                     end = Offset(size.width, baseline),
                     strokeWidth = 1.dp.toPx()
+                )
+                drawText(
+                    label,
+                    topLeft = Offset(
+                        0f,
+                        (baseline - label.size.height / 2f)
+                            .coerceIn(0f, size.height - label.size.height)
+                    )
                 )
             }
 
