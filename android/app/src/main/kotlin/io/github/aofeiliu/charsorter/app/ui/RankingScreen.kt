@@ -34,12 +34,16 @@ import kotlin.math.roundToInt
  */
 data class RatingSpread(val rating: Double, val doubleRd: Double)
 
+/** Only a Glicko list has ratings to chart; insertion sort 404s on /graph. */
+private const val GLICKO = "GL"
+
 @Composable
 fun RankingScreen(
     list: CharacterList,
     ranking: Ranking?,
     spreads: Map<Int, RatingSpread>?,
     onOpenCharacter: (RankedCharacter) -> Unit,
+    onOpenChart: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp)) {
@@ -54,14 +58,33 @@ fun RankingScreen(
                 color = CharSorterColor.Ink,
                 modifier = Modifier.weight(1f).padding(end = 12.dp)
             )
-            OutlinedButton(
-                onClick = onBack,
-                shape = CharSorterShape.Pill,
-                border = BorderStroke(1.dp, CharSorterColor.AccentDark.copy(alpha = 0.55f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.Link),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
-            ) {
-                Text("Lists", style = CharSorterType.ButtonSecondary, maxLines = 1)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (list.controllerType == GLICKO) {
+                    OutlinedButton(
+                        onClick = onOpenChart,
+                        shape = CharSorterShape.Pill,
+                        border = BorderStroke(
+                            1.dp, CharSorterColor.AccentDark.copy(alpha = 0.55f)
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = CharSorterColor.Link
+                        ),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
+                    ) {
+                        Text("Chart", style = CharSorterType.ButtonSecondary, maxLines = 1)
+                    }
+                }
+                OutlinedButton(
+                    onClick = onBack,
+                    shape = CharSorterShape.Pill,
+                    border = BorderStroke(1.dp, CharSorterColor.AccentDark.copy(alpha = 0.55f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = CharSorterColor.Link
+                    ),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp)
+                ) {
+                    Text("Lists", style = CharSorterType.ButtonSecondary, maxLines = 1)
+                }
             }
         }
         ranking?.progress?.let {

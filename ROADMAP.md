@@ -619,8 +619,8 @@ wanted is blocked on the server, not on effort.
 | # | Item | Size | `:client` work | Blocked on |
 | --- | --- | --- | --- | --- |
 | 1 | List and character editing | Large | Substantial | **Done** (2026-09-11) |
-| 2 | Per-character ranking history plot | Large | Yes | An upstream API change |
-| 3 | Whole-list Glicko chart | ~200 | Yes | A readability decision |
+| 2 | Per-character ranking history plot | Large | Yes | **Done** (2026-09-11) |
+| 3 | Whole-list Glicko chart | ~200 | Yes | **Done** (2026-09-11) |
 | 4 | Small hardening | ~50 | None | Nothing |
 
 **Deferred by decision, not forgotten** (2026-09-10):
@@ -755,6 +755,18 @@ so the entry point must be conditional on `controller_type`.
 
 If entry 2 ships first, revisit whether this is still wanted; the drill-down
 may cover the need.
+
+**Done 2026-09-11**, as candidate 1. One row per character: the rating as a
+marker, `2 * rd` as a whisker, on a scale shared by every row, reached from a
+"Chart" button the ranking screen shows only for a Glicko list. Bars were
+dropped along the way — a bar's length reads as a magnitude measured from
+zero, and a Glicko rating has no zero — so the row is a marker-and-whisker
+rather than the web chart's bar. It answers the ranking's own puzzle for
+free: a character can sit below one it outrates, and the row shows why, in
+the whisker reaching further left.
+
+Entry 2 shipped first and did not cover the need: the drill-down answers
+"how did this one get here", the chart answers "how do they compare now".
 
 ### 4 — Small hardening
 
