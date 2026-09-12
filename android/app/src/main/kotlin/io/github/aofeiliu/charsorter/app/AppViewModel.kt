@@ -264,10 +264,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(pending = next) }
     }
 
+    /**
+     * Opens the ranking, then fills the spreads in behind it.
+     *
+     * Both calls replay the list's whole history server-side, so waiting for
+     * the second before drawing anything doubled the time to first paint on a
+     * long list. The ranking is published as soon as it lands and the spreads
+     * appear under the scores when they follow.
+     */
     fun openForRanking(list: CharacterList) = runApiCall {
-        _state.update { it.copy(screen = Screen.Ranking(list), spreads = null) }
+        _state.update {
+            it.copy(screen = Screen.Ranking(list), ranking = null, spreads = null)
+        }
         val ranking = client.ranking(list.id)
-        _state.update { it.copy(ranking = ranking, spreads = spreadsFor(ranking)) }
+        _state.update { it.copy(ranking = ranking) }
+        val spreads = spreadsFor(ranking)
+        _state.update { it.copy(spreads = spreads) }
     }
 
     /**

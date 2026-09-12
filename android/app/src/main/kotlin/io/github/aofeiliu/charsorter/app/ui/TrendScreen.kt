@@ -36,6 +36,7 @@ import io.github.aofeiliu.charsorter.client.RankedCharacter
 import io.github.aofeiliu.charsorter.client.RatingHistory
 import io.github.aofeiliu.charsorter.client.RatingPoint
 import java.time.OffsetDateTime
+import java.time.Year
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import kotlin.math.abs
@@ -52,6 +53,7 @@ private const val MAX_PLOT_POINTS = 80
 private const val MAX_DOT_POINTS = 40
 
 private val DayMonth = DateTimeFormatter.ofPattern("d MMM")
+private val DayMonthYear = DateTimeFormatter.ofPattern("d MMM yyyy")
 
 @Composable
 fun TrendScreen(
@@ -305,7 +307,7 @@ private fun RatingChart(points: List<RatingPoint>) {
                 color = CharSorterColor.Muted
             )
             Text(
-                "${dayMonthOf(points.first().timestamp)} – ${dayMonthOf(points.last().timestamp)}",
+                spanOf(points.first().timestamp, points.last().timestamp),
                 style = CharSorterType.FandomSmall,
                 color = CharSorterColor.Muted
             )
@@ -362,9 +364,32 @@ private fun downsample(points: List<RatingPoint>, limit: Int): List<RatingPoint>
     return sampled
 }
 
-/** The server's ISO timestamp as a short day-and-month, or as sent if unparseable. */
-private fun dayMonthOf(timestamp: String): String = try {
-    OffsetDateTime.parse(timestamp).format(DayMonth)
+private fun parsedOrNull(timestamp: String): OffsetDateTime? = try {
+    OffsetDateTime.parse(timestamp)
 } catch (err: DateTimeParseException) {
-    timestamp
+    null
+}
+
+/** Short date, carrying the year unless it is the current one. */
+private fun dayMonthOf(timestamp: String): String {
+    val parsed = parsedOrNull(timestamp) ?: return timestamp
+    val format = if (parsed.year == Year.now().value) DayMonth else DayMonthYear
+    return parsed.format(format)
+}
+
+/**
+ * The span two timestamps cover. A history can run for years, and "10 Sep –
+ * 11 Sep" across two of them reads as a single day, so both ends carry the
+ * year unless both fall in the current one.
+ */
+private fun spanOf(first: String, last: String): String {
+    val from = parsedOrNull(first)
+    val to = parsedOrNull(last)
+    if (from == null || to == null) {
+        return "$first – $last"
+    }
+    val thisYear = Year.now().value
+    val format =
+        if (from.year == thisYear && to.year == thisYear) DayMonth else DayMonthYear
+    return "${from.format(format)} – ${to.format(format)}"
 }
