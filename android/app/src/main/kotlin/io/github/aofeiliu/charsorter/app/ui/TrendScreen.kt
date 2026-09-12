@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -36,10 +37,18 @@ import io.github.aofeiliu.charsorter.client.RatingPoint
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** Where an unplayed character sits before any comparison moves it. */
 private const val DEFAULT_RATING = 1500.0
+
+/** Above this many matches the line is downsampled to stay readable. */
+private const val MAX_PLOT_POINTS = 80
+
+/** Below this many, each match is also marked with its own dot. */
+private const val MAX_DOT_POINTS = 40
 
 private val DayMonth = DateTimeFormatter.ofPattern("d MMM")
 
@@ -124,7 +133,8 @@ private fun TrendBody(character: RankedCharacter, history: RatingHistory) {
     ) {
         DiamondAccent(size = 6.dp, fill = CharSorterColor.AccentDark)
         Text(
-            "Rank ${character.rank} · ${history.rating.roundToInt()} ± ${doubleRd.roundToInt()}",
+            "Rank ${character.rank} · ${history.rating.roundToInt()} ± " +
+                "${doubleRd.roundToInt()} · ${history.history.size} matches",
             style = CharSorterType.ProgressText,
             color = CharSorterColor.Muted
         )
@@ -196,8 +206,9 @@ private fun MatchRow(point: RatingPoint) {
  */
 @Composable
 private fun RatingChart(points: List<RatingPoint>) {
-    val low = points.minOf { it.rating - 2 * it.rd }.coerceAtMost(DEFAULT_RATING)
-    val high = points.maxOf { it.rating + 2 * it.rd }.coerceAtLeast(DEFAULT_RATING)
+    val plotted = remember(points) { downsample(points, MAX_PLOT_POINTS) }
+    val low = plotted.minOf { it.rating - 2 * it.rd }.coerceAtMost(DEFAULT_RATING)
+    val high = plotted.maxOf { it.rating + 2 * it.rd }.coerceAtLeast(DEFAULT_RATING)
     val span = (high - low).coerceAtLeast(1.0)
 
     Column(
@@ -219,8 +230,8 @@ private fun RatingChart(points: List<RatingPoint>) {
         )
         Canvas(modifier = Modifier.fillMaxWidth().height(180.dp).padding(vertical = 6.dp)) {
             fun xOf(index: Int): Float = when {
-                points.size == 1 -> size.width / 2f
-                else -> size.width * index / (points.size - 1).toFloat()
+                plotted.size == 1 -> size.width / 2f
+                else -> size.width * index / (plotted.size - 1).toFloat()
             }
             fun yOf(value: Double): Float =
                 (size.height * (1.0 - (value - low) / span)).toFloat()
@@ -233,21 +244,21 @@ private fun RatingChart(points: List<RatingPoint>) {
                 strokeWidth = 1.dp.toPx()
             )
 
-            if (points.size > 1) {
+            if (plotted.size > 1) {
                 val band = Path()
-                points.forEachIndexed { index, point ->
+                plotted.forEachIndexed { index, point ->
                     val x = xOf(index)
                     val y = yOf(point.rating + 2 * point.rd)
                     if (index == 0) band.moveTo(x, y) else band.lineTo(x, y)
                 }
-                for (index in points.indices.reversed()) {
-                    band.lineTo(xOf(index), yOf(points[index].rating - 2 * points[index].rd))
+                for (index in plotted.indices.reversed()) {
+                    band.lineTo(xOf(index), yOf(plotted[index].rating - 2 * plotted[index].rd))
                 }
                 band.close()
                 drawPath(band, color = CharSorterColor.AccentLight.copy(alpha = 0.45f))
 
                 val line = Path()
-                points.forEachIndexed { index, point ->
+                plotted.forEachIndexed { index, point ->
                     val x = xOf(index)
                     val y = yOf(point.rating)
                     if (index == 0) line.moveTo(x, y) else line.lineTo(x, y)
@@ -259,12 +270,14 @@ private fun RatingChart(points: List<RatingPoint>) {
                 )
             }
 
-            points.forEachIndexed { index, point ->
-                drawCircle(
-                    color = CharSorterColor.AccentDark,
-                    radius = 3.dp.toPx(),
-                    center = Offset(xOf(index), yOf(point.rating))
-                )
+            if (plotted.size <= MAX_DOT_POINTS) {
+                plotted.forEachIndexed { index, point ->
+                    drawCircle(
+                        color = CharSorterColor.AccentDark,
+                        radius = 3.dp.toPx(),
+                        center = Offset(xOf(index), yOf(point.rating))
+                    )
+                }
             }
         }
         Row(
@@ -283,6 +296,55 @@ private fun RatingChart(points: List<RatingPoint>) {
             )
         }
     }
+}
+
+/**
+ * Thins a long history to [limit] points for drawing.
+ *
+ * Largest-Triangle-Three-Buckets: it keeps whichever point in each bucket
+ * forms the largest triangle with its neighbours, which preserves the peaks
+ * and dips that plain every-Nth sampling drops. First and last always
+ * survive, so the line still starts and ends where the history does.
+ */
+private fun downsample(points: List<RatingPoint>, limit: Int): List<RatingPoint> {
+    if (points.size <= limit || limit < 3) {
+        return points
+    }
+    val bucket = (points.size - 2).toDouble() / (limit - 2)
+    val sampled = ArrayList<RatingPoint>(limit)
+    sampled.add(points.first())
+    var anchor = 0
+    for (i in 0 until limit - 2) {
+        val avgStart = (floor((i + 1) * bucket).toInt() + 1).coerceIn(1, points.size - 1)
+        val avgEnd = (floor((i + 2) * bucket).toInt() + 1).coerceIn(avgStart + 1, points.size)
+        var avgX = 0.0
+        var avgY = 0.0
+        for (j in avgStart until avgEnd) {
+            avgX += j
+            avgY += points[j].rating
+        }
+        avgX /= (avgEnd - avgStart)
+        avgY /= (avgEnd - avgStart)
+
+        val start = (floor(i * bucket).toInt() + 1).coerceIn(1, points.size - 1)
+        val end = (floor((i + 1) * bucket).toInt() + 1).coerceIn(start + 1, points.size)
+        var best = start
+        var bestArea = -1.0
+        for (j in start until end) {
+            val area = abs(
+                (anchor - avgX) * (points[j].rating - points[anchor].rating) -
+                    (anchor - j.toDouble()) * (avgY - points[anchor].rating)
+            )
+            if (area > bestArea) {
+                bestArea = area
+                best = j
+            }
+        }
+        sampled.add(points[best])
+        anchor = best
+    }
+    sampled.add(points.last())
+    return sampled
 }
 
 /** The server's ISO timestamp as a short day-and-month, or as sent if unparseable. */
