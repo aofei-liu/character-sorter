@@ -9,6 +9,7 @@ import io.github.aofeiliu.charsorter.client.CharSorterClient
 import io.github.aofeiliu.charsorter.client.Character
 import io.github.aofeiliu.charsorter.client.CharacterList
 import io.github.aofeiliu.charsorter.client.Comparison
+import io.github.aofeiliu.charsorter.client.Graph
 import io.github.aofeiliu.charsorter.client.NextComparison
 import io.github.aofeiliu.charsorter.client.NotAuthenticatedException
 import io.github.aofeiliu.charsorter.client.RankedCharacter
@@ -35,6 +36,7 @@ sealed interface Screen {
         val list: CharacterList,
         val character: RankedCharacter
     ) : Screen
+    data class ListChart(val list: CharacterList) : Screen
 }
 
 data class UiState(
@@ -81,7 +83,9 @@ data class UiState(
      */
     val spreads: Map<Int, RatingSpread>? = null,
     /** The character whose history the trend screen is showing, if loaded. */
-    val history: RatingHistory? = null
+    val history: RatingHistory? = null,
+    /** Every character's rating and spread, for the whole-list chart. */
+    val graph: Graph? = null
 )
 
 /**
@@ -321,6 +325,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(history = history) }
     }
 
+    fun openForChart(list: CharacterList) = runApiCall {
+        _state.update { it.copy(screen = Screen.ListChart(list), graph = null) }
+        val graph = client.graph(list.id)
+        _state.update { it.copy(graph = graph) }
+    }
+
+    /** Re-asks for the graph after a failed fetch left the chart empty. */
+    fun loadGraph(list: CharacterList) = runApiCall {
+        val graph = client.graph(list.id)
+        _state.update { it.copy(graph = graph) }
+    }
+
     /**
      * Unwinds one screen, for the system back gesture.
      *
@@ -333,6 +349,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             is Screen.CharacterTrend -> {
                 _state.update {
                     it.copy(screen = Screen.Ranking(screen.list), history = null)
+                }
+                true
+            }
+            is Screen.ListChart -> {
+                _state.update {
+                    it.copy(screen = Screen.Ranking(screen.list), graph = null)
                 }
                 true
             }
@@ -353,6 +375,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 characters = null,
                 spreads = null,
                 history = null,
+                graph = null,
                 undoStack = emptyList()
             )
         }
