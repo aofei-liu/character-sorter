@@ -337,16 +337,16 @@ private fun RatingChart(points: List<RatingPoint>) {
  *
  * Largest-Triangle-Three-Buckets: it keeps whichever point in each bucket
  * forms the largest triangle with its neighbours, which preserves the peaks
- * and dips that plain every-Nth sampling drops. First and last always
- * survive, so the line still starts and ends where the history does.
+ * and dips that plain every-Nth sampling drops. It guarantees only the
+ * first and last, so the peak and trough the chart labels are added back.
  */
 private fun downsample(points: List<RatingPoint>, limit: Int): List<RatingPoint> {
     if (points.size <= limit || limit < 3) {
         return points
     }
     val bucket = (points.size - 2).toDouble() / (limit - 2)
-    val sampled = ArrayList<RatingPoint>(limit)
-    sampled.add(points.first())
+    val sampled = ArrayList<Int>(limit)
+    sampled.add(0)
     var anchor = 0
     for (i in 0 until limit - 2) {
         val avgStart = (floor((i + 1) * bucket).toInt() + 1).coerceIn(1, points.size - 1)
@@ -374,11 +374,15 @@ private fun downsample(points: List<RatingPoint>, limit: Int): List<RatingPoint>
                 best = j
             }
         }
-        sampled.add(points[best])
+        sampled.add(best)
         anchor = best
     }
-    sampled.add(points.last())
-    return sampled
+    sampled.add(points.size - 1)
+    val extremes = listOf(
+        points.indices.minBy { points[it].rating },
+        points.indices.maxBy { points[it].rating }
+    )
+    return (sampled + extremes).distinct().sorted().map { points[it] }
 }
 
 private fun parsedOrNull(timestamp: String): OffsetDateTime? = try {
