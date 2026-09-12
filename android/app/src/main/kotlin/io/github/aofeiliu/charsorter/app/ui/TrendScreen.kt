@@ -143,7 +143,7 @@ private fun TrendBody(character: RankedCharacter, history: RatingHistory) {
         )
     }
     Text(
-        "Ranked on ${(history.rating - doubleRd).roundToInt()}, the low end of that range.",
+        "Scored at ${(history.rating - doubleRd).roundToInt()}, the minimum of that interval.",
         style = CharSorterType.FandomSmall,
         color = CharSorterColor.Muted,
         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
