@@ -728,9 +728,12 @@ in `:client`, where it can be tested. Drift would show up as the app
 disagreeing with the website about the same list, so test it against a real
 list's `/graph` output, whose final state the replay must reproduce exactly.
 
-Opening the upstream PR is its own friction — a cross-fork PR cannot be
-created from a session here; see "Opening a PR against upstream" in
-`CLAUDE.md`, which ends in handing over a compare link.
+Opening the upstream PR is straightforward from a local session: `gh pr
+create --repo jerrywu64/character-sorter --head aofei-liu:<branch>` works,
+and the compare link is the fallback where `gh` is not available. See
+"Opening a PR against upstream" in `CLAUDE.md`. The friction that remains is
+what happens after: the change is only live once upstream merges *and*
+redeploys.
 
 ### 3 — Whole-list Glicko chart
 

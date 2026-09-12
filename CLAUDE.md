@@ -492,55 +492,67 @@ would be reasonable if you're modernizing anyway.
 
 ### Opening a PR against upstream
 
-A cross-fork PR to `jerrywu64/character-sorter` **cannot be opened from a Claude
-Code session** that was started from this fork. Three independent local gates
-stop it, and none of them is GitHub refusing:
+**This works, from a local session with the `gh` CLI.** Verified 2026-09-11 —
+this command opened `jerrywu64/character-sorter#13` from the WSL checkout,
+where `gh` is authenticated as `aofei-liu` with `repo` scope:
+
+```
+gh pr create --repo jerrywu64/character-sorter \
+  --base main --head aofei-liu:<branch> \
+  --title "<title>" --body-file <file>
+```
+
+GitHub is happy to take a cross-fork PR from a fork the account owns; the only
+thing to get right is the `owner:branch` form of `--head`. Check
+`gh auth status` first if unsure.
+
+**What cannot do it is the GitHub MCP tooling in a cloud session**, and that is
+what the three failures below were about. Keep the two straight: a denial there
+says nothing about `gh` here, and this section used to claim — wrongly — that
+the whole thing was impossible from any session.
 
 1. **Session repo scope.** Only the repos a session was sourced from are in
    scope. `create_pull_request` with owner `jerrywu64` fails the scope check
    before any API call: `Access denied: repository "jerrywu64/character-sorter"
    is not configured for this session.`
-2. **`add_repo` cannot attach it.** The obvious fix is blocked twice over.
-   First the auto-mode classifier refuses the call (`Blocked by classifier`);
-   there is no settings file in this repo or the container, so the classifier
-   decides alone. Even with that approved, the tool itself refuses: `cross-tier
-   adds are not supported in v1 ... session already has repos from owner(s)
-   [aofei-liu]`. The second failure is the durable one — no permission grant
-   gets past it.
-3. **Sourcing a session from upstream doesn't help either.** The escape that
-   error suggests — spawn a new session with `jerrywu64/character-sorter` as
-   its initial source — was tried on 2026-09-01 and came back with read-only
-   auth; it could not create the PR. The user opened PR #10 by hand from the
-   compare link. That attempt cost a full extra session, so don't repeat it.
+2. **`add_repo` cannot attach it.** Blocked twice over: the auto-mode
+   classifier refuses the call, and the tool itself then refuses with
+   `cross-tier adds are not supported in v1 ... session already has repos from
+   owner(s) [aofei-liu]`. The second failure is the durable one.
+3. **Sourcing a session from upstream doesn't help either.** Tried 2026-09-01;
+   it came back with read-only auth and could not create the PR. That attempt
+   cost a full extra session, so don't repeat it — reach for `gh` instead.
 
-**Reading upstream is a different matter, and it works.** The GitHub tools are
-scope-blocked, but `WebFetch` against `https://github.com/jerrywu64/...` returns
-the public repo fine — branch selector, directory listings, commit log. Use it
-to confirm what actually landed instead of recording upstream state as hearsay;
-that is how the `#10`/`#11`/`#12` merges and the `main` rename were
-established. It is read-only, so it opens nothing and routes around nothing.
+Every denial in that list is local tooling, not GitHub: `list_repos` reported
+`jerrywu64/character-sorter` public with `can_push: true` for `aofei-liu` back
+on 2026-09-01, which is consistent with `gh` working now. Don't report any of
+it to the user as "upstream denied access".
 
-Verified once (2026-09-01): `list_repos` reports `jerrywu64/character-sorter` as
-public with `can_push: true` for the authenticated user `aofei-liu`, so the
-account's GitHub access is likely fine. Every denial seen so far is local
-tooling, not GitHub — don't report it to the user as "upstream denied access",
-and don't retry the blocked call or route around it.
+**Reading upstream** works from anywhere. `WebFetch` against
+`https://github.com/jerrywu64/...` returns the public repo fine — branch
+selector, directory listings, commit log — and a local session can also
+`git remote add upstream https://github.com/jerrywu64/character-sorter.git`
+and fetch it read-only, which is how a branch gets cut from upstream's actual
+head. Use one of those to confirm what landed rather than recording upstream
+state as hearsay.
 
-**So the workflow is: prepare and verify everything, then hand the user a
-compare link and let them click Create.**
+So: **open the PR with `gh` when it is available; otherwise prepare everything
+and hand the user this compare link to click Create on:**
+
+```
+https://github.com/jerrywu64/character-sorter/compare/main...aofei-liu:character-sorter:<branch>?expand=1
+```
+
+Either way:
 
 - Cut the branch from upstream's actual head, not from fork `main`, and keep
   fork-only docs (`CLAUDE.md`, `ROADMAP.md`, `CONTRIBUTING.md`) out of it.
-- Verify on Django 2.0.6 (Path A) before handing it over, per "Running the code".
+- Verify on Django 2.0.6 (Path A) before opening it, per "Running the code".
+  Where no Python 3.7 environment is available, say so plainly in the PR body
+  rather than letting the maintainer assume the pinned stack was exercised —
+  production runs it, and a silent gap there is the expensive kind.
 - Push the branch to `aofei-liu/character-sorter` — that part works normally.
-- Give the user the compare URL, the title, and the body as a file they can
-  paste without reformatting:
-
-  ```
-  https://github.com/jerrywu64/character-sorter/compare/main...aofei-liu:character-sorter:<branch>?expand=1
-  ```
-
-- Tell them the expected file count and commit count so they can spot a wrong
-  base on the compare page before submitting.
+- State the expected file and commit count, so a wrong base is visible before
+  the PR is submitted rather than after.
 - Upstream has **no PR template** at `45a897d` (no `.github/`, no `docs/`), so
   there are no headings to mirror.
