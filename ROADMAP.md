@@ -619,7 +619,7 @@ wanted is blocked on the server, not on effort.
 | # | Item | Size | `:client` work | Blocked on |
 | --- | --- | --- | --- | --- |
 | 1 | List and character editing | Large | Substantial | **Done** (2026-09-11) |
-| 2 | Per-character ranking history plot | Large | Yes | **Done** (2026-09-11) |
+| 2 | Per-character ranking history plot | Large | Yes | **Done** (2026-09-12) |
 | 3 | Whole-list Glicko chart | ~200 | Yes | **Done** (2026-09-11) |
 | 4 | Small hardening | ~50 | None | Nothing |
 | 5 | Dedup the `/next` replay | ~30 | None | **Done** (2026-09-12) |
@@ -736,6 +736,31 @@ and the compare link is the fallback where `gh` is not available. See
 what happens after: the change is only live once upstream merges *and*
 redeploys.
 
+**Done 2026-09-12**, as shape (b) rather than the recommended (a): a
+server-side `GET /api/lists/<id>/characters/<id>/history` that replays once and
+emits the character's rating and RD after each match it played. (a) was dropped
+because porting the Glicko replay to Kotlin bought nothing the fork needed
+today, and a wrong port would have surfaced as the app disagreeing with the
+website. Opened upstream with `gh` as `#13` on 2026-09-11, merged 2026-09-12,
+and live — the trend screen works against `charsorter.lndyn.com`.
+
+`:app` gained a trend screen reached by tapping a ranked row: the rating line
+with its `2 * rd` band, dated at both ends, above a reversed match list. The
+chart scales to the line and not the band, since an early RD near 350 squashes
+the trend into a strip, and a history longer than 80 points is thinned with
+Largest-Triangle-Three-Buckets so the peaks survive.
+
+The plot itself is app-only by design, and stays that way — the website gains
+no trend view, and further visualization work is expected to land in the app
+rather than upstream. Only the endpoint had to be shared, because the ratings
+it replays live in the production database.
+
+**Minor, local-only: the endpoint's source is not in fork `main`.** It exists
+only on `claude/rating-history-upstream`, cut from upstream's head, so this
+repo's own Django app 404s on a route production serves — which costs nothing
+against the live site and only stops `LocalServerIntegrationTest` from
+reaching the trend screen.
+
 ### 3 — Whole-list Glicko chart
 
 Wanted, but it needs a readability answer before code. The web version is a
@@ -774,7 +799,7 @@ Entry 2 shipped first and did not cover the need: the drill-down answers
 
 ### 4 — Small hardening
 
-Three unrelated papercuts, independent and pick-up-anytime:
+Unrelated papercuts, independent and pick-up-anytime:
 
 - **The sort loop flickers.** Every answer swaps the whole card area for a
   full-screen spinner until the next pair arrives, so fast sorting stutters on

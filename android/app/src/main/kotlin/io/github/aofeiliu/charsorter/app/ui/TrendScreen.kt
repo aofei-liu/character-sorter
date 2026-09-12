@@ -29,6 +29,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.aofeiliu.charsorter.client.CharacterList
@@ -143,7 +145,7 @@ private fun TrendBody(character: RankedCharacter, history: RatingHistory) {
         )
     }
     Text(
-        "Ranked on ${(history.rating - doubleRd).roundToInt()}, the low end of that range.",
+        "Scored at ${(history.rating - doubleRd).roundToInt()}, the minimum of that interval.",
         style = CharSorterType.FandomSmall,
         color = CharSorterColor.Muted,
         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -159,17 +161,18 @@ private fun TrendBody(character: RankedCharacter, history: RatingHistory) {
         return
     }
 
-    RatingChart(history.history)
+    val dateFormat = remember(history.history) { formatFor(history.history) }
+    RatingChart(history.history, dateFormat)
     LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
         items(history.history.reversed()) { point ->
-            MatchRow(point)
+            MatchRow(point, dateFormat)
             HorizontalDivider(color = CharSorterColor.AccentDark.copy(alpha = 0.22f))
         }
     }
 }
 
 @Composable
-private fun MatchRow(point: RatingPoint) {
+private fun MatchRow(point: RatingPoint, format: DateTimeFormatter) {
     val outcome = when {
         point.value > 0 -> "Won"
         point.value < 0 -> "Lost"
@@ -187,7 +190,7 @@ private fun MatchRow(point: RatingPoint) {
                 color = CharSorterColor.Ink
             )
             Text(
-                dayMonthOf(point.timestamp),
+                dateOf(point.timestamp, format),
                 style = CharSorterType.FandomSmall,
                 color = CharSorterColor.Muted
             )
@@ -208,8 +211,12 @@ private fun MatchRow(point: RatingPoint) {
  * one unreadable column. The ends are dated instead.
  */
 @Composable
-private fun RatingChart(points: List<RatingPoint>) {
+private fun RatingChart(points: List<RatingPoint>, format: DateTimeFormatter) {
     val plotted = remember(points) { downsample(points, MAX_PLOT_POINTS) }
+    val measurer = rememberTextMeasurer()
+    val baselineStyle = remember {
+        CharSorterType.FandomSmall.copy(color = CharSorterColor.Muted.copy(alpha = 0.75f))
+    }
     // Scaled to the line, not the band: the first matches carry an rd near
     // 350, and letting that set the range squashes the trend into a strip.
     // The band clips at the edges instead.
@@ -253,11 +260,22 @@ private fun RatingChart(points: List<RatingPoint>) {
 
             if (DEFAULT_RATING in low..high) {
                 val baseline = yOf(DEFAULT_RATING)
+                val label = measurer.measure(
+                    DEFAULT_RATING.roundToInt().toString(), baselineStyle
+                )
                 drawLine(
                     color = CharSorterColor.Muted.copy(alpha = 0.35f),
-                    start = Offset(0f, baseline),
+                    start = Offset(label.size.width + 6.dp.toPx(), baseline),
                     end = Offset(size.width, baseline),
                     strokeWidth = 1.dp.toPx()
+                )
+                drawText(
+                    label,
+                    topLeft = Offset(
+                        0f,
+                        (baseline - label.size.height / 2f)
+                            .coerceIn(0f, size.height - label.size.height)
+                    )
                 )
             }
 
@@ -307,7 +325,7 @@ private fun RatingChart(points: List<RatingPoint>) {
                 color = CharSorterColor.Muted
             )
             Text(
-                spanOf(points.first().timestamp, points.last().timestamp),
+                spanOf(points.first().timestamp, points.last().timestamp, format),
                 style = CharSorterType.FandomSmall,
                 color = CharSorterColor.Muted
             )
@@ -320,16 +338,16 @@ private fun RatingChart(points: List<RatingPoint>) {
  *
  * Largest-Triangle-Three-Buckets: it keeps whichever point in each bucket
  * forms the largest triangle with its neighbours, which preserves the peaks
- * and dips that plain every-Nth sampling drops. First and last always
- * survive, so the line still starts and ends where the history does.
+ * and dips that plain every-Nth sampling drops. It guarantees only the
+ * first and last, so the peak and trough the chart labels are added back.
  */
 private fun downsample(points: List<RatingPoint>, limit: Int): List<RatingPoint> {
     if (points.size <= limit || limit < 3) {
         return points
     }
     val bucket = (points.size - 2).toDouble() / (limit - 2)
-    val sampled = ArrayList<RatingPoint>(limit)
-    sampled.add(points.first())
+    val sampled = ArrayList<Int>(limit)
+    sampled.add(0)
     var anchor = 0
     for (i in 0 until limit - 2) {
         val avgStart = (floor((i + 1) * bucket).toInt() + 1).coerceIn(1, points.size - 1)
@@ -357,11 +375,15 @@ private fun downsample(points: List<RatingPoint>, limit: Int): List<RatingPoint>
                 best = j
             }
         }
-        sampled.add(points[best])
+        sampled.add(best)
         anchor = best
     }
-    sampled.add(points.last())
-    return sampled
+    sampled.add(points.size - 1)
+    val extremes = listOf(
+        points.indices.minBy { points[it].rating },
+        points.indices.maxBy { points[it].rating }
+    )
+    return (sampled + extremes).distinct().sorted().map { points[it] }
 }
 
 private fun parsedOrNull(timestamp: String): OffsetDateTime? = try {
@@ -370,26 +392,21 @@ private fun parsedOrNull(timestamp: String): OffsetDateTime? = try {
     null
 }
 
-/** Short date, carrying the year unless it is the current one. */
-private fun dayMonthOf(timestamp: String): String {
-    val parsed = parsedOrNull(timestamp) ?: return timestamp
-    val format = if (parsed.year == Year.now().value) DayMonth else DayMonthYear
-    return parsed.format(format)
+/**
+ * One date format for the whole history: years on every date or none.
+ *
+ * A history can run for years, so "10 Sep" on a row is ambiguous the moment
+ * any match falls outside the current one — and deciding per date left the
+ * chart's span dated while the rows under it were not.
+ */
+private fun formatFor(points: List<RatingPoint>): DateTimeFormatter {
+    val thisYear = Year.now().value
+    val spansYears = points.any { (parsedOrNull(it.timestamp)?.year ?: thisYear) != thisYear }
+    return if (spansYears) DayMonthYear else DayMonth
 }
 
-/**
- * The span two timestamps cover. A history can run for years, and "10 Sep –
- * 11 Sep" across two of them reads as a single day, so both ends carry the
- * year unless both fall in the current one.
- */
-private fun spanOf(first: String, last: String): String {
-    val from = parsedOrNull(first)
-    val to = parsedOrNull(last)
-    if (from == null || to == null) {
-        return "$first – $last"
-    }
-    val thisYear = Year.now().value
-    val format =
-        if (from.year == thisYear && to.year == thisYear) DayMonth else DayMonthYear
-    return "${from.format(format)} – ${to.format(format)}"
-}
+private fun dateOf(timestamp: String, format: DateTimeFormatter): String =
+    parsedOrNull(timestamp)?.format(format) ?: timestamp
+
+private fun spanOf(first: String, last: String, format: DateTimeFormatter): String =
+    "${dateOf(first, format)} – ${dateOf(last, format)}"
