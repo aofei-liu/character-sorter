@@ -622,6 +622,7 @@ wanted is blocked on the server, not on effort.
 | 2 | Per-character ranking history plot | Large | Yes | **Done** (2026-09-11) |
 | 3 | Whole-list Glicko chart | ~200 | Yes | **Done** (2026-09-11) |
 | 4 | Small hardening | ~50 | None | Nothing |
+| 5 | Dedup the `/next` replay | ~30 | None | **Done** (2026-09-12) |
 
 **Deferred by decision, not forgotten** (2026-09-10):
 
@@ -796,6 +797,73 @@ logic" the module split was meant to keep in `:client`, where it would have
 been testable. `:app` has no tests and cannot be verified in any session here.
 Logic that can be stated as a rule about requests and responses belongs on the
 `:client` side of the line.
+
+### 5 — Dedup the `/next` replay
+
+Not requested yet, but earned by real numbers: a seeded benchmark (30
+characters, 100/1k/5k comparisons, scratch SQLite via `manage.py shell`, not
+the production host) shows the replay cost scaling **linearly** with
+comparison count, which is the good news, and `/next` paying it **twice**,
+which is the bad one:
+
+| comparisons | `compute_ratings` (cold) | `get_last_matches` | `/next` | `/api/lists/<id>` | `/graph` |
+| --- | --- | --- | --- | --- | --- |
+| 100 | 9ms | 7ms | 26ms | 18ms | 15ms |
+| 1,000 | 59ms | 48ms | 118ms | 67ms | 63ms |
+| 5,000 | 341ms | 292ms | 671ms | 337ms | 336ms |
+
+`get_next_comparison` calls `compute_ratings` (one replay), then separately
+calls `SortRecord.get_last_matches` — a second, independent query and replay
+of the same table — to find each pair's last meeting. `/next` is the sort
+loop's own endpoint, the action repeated most in the whole app, so it is the
+one that will be felt first as a list grows. The owner's largest list is
+already estimated at 500-1,500 comparisons from one character's 113 matches
+alone, which lands in the tens-to-~150ms band today and grows as the list
+does.
+
+**The fix: fold `get_last_matches` into the pass `compute_ratings` already
+makes.** `compute_ratings` already loads
+`charlist.sortrecord_set.all().order_by("timestamp")` into `records` and
+walks them once; `get_last_matches` re-queries and re-walks the same table to
+find each pair's most recent match. Deriving that from the records
+`compute_ratings` already has removes one of `/next`'s two replays with no
+behavior change and no new failure mode — a same-file refactor, not a cache.
+At 5,000 comparisons this should cut `/next` from ~670ms toward the ~340ms a
+single replay costs today.
+
+**Caching the replay result itself across requests was considered and
+rejected.** `CLAUDE.md` documents "nothing is denormalized or cached...
+rankings are always recomputed... on every request" as the app's current
+invariant, and trading that guarantee for speed was judged too dangerous — a
+caching bug means a stale ranking is shown as current, which is a worse
+failure than a slow page. This entry is the dedup only; the earlier gotcha
+note (PR 3a section, above) proposing "cache on count + max timestamp" stays
+unimplemented for the same reason, and is also wrong as written — comparisons
+can be backdated (`client_timestamp`), so "max timestamp" does not change on
+every write and would invalidate incorrectly if anyone ever built it.
+
+This needs an upstream PR like the XSS fix, not a fork-only change:
+`charsorter.lndyn.com` is deployed from what the maintainer merges into
+upstream `main` (the same model already established for `#11`), and the
+mobile client depends on *that* server being fast, not on anything committed
+to this fork.
+
+**Done 2026-09-12**, and verified on Path A this time: a conda-forge Python
+3.7.12 sandbox with the exact pinned `Django==2.0.6`/`numpy==1.14.5`/
+`scipy==1.1.0` installs cleanly (`uv` has no standalone 3.7 build; micromamba
+does). `manage.py check` and a plain `migrate --run-syncdb` are clean, but
+`manage.py test` itself fails independent of this change — `sorterinput`
+migration 0003's `AlterField` rebuilds the `characterlist` table, and Django
+2.0.6's SQLite schema editor leaves `character`'s FK clause referencing the
+now-gone `..._characterlist__old`. Reproduced on the pre-fix code too, so it
+is a real Django 2.0.6 + SQLite bug — production runs Postgres and never
+takes this table-rebuild path, so it has no bearing there. Worked around it
+for verification only (disabling SQLite FK enforcement on the connection) and
+confirmed directly against real Django/numpy/scipy: `self.last_matches`,
+built inline during `compute_ratings`, matches `SortRecord.get_last_matches`
+exactly, and `get_next_comparison`/`get_sorted_chars`/`get_annotations`/
+`get_graph_info` all still run clean. Also reran the full suite under Path B:
+20/20.
 
 ### Deferred: the offline queue
 
