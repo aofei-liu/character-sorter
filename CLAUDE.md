@@ -495,7 +495,10 @@ would be reasonable if you're modernizing anyway.
   and every file they touched is now byte-identical in `main`. They are not
   ancestors of `main` — upstream squashed them and they never shared its
   history — so an ancestry check will call them unmerged. Compare file content,
-  not `git merge-base`, before concluding anything is outstanding.
+  not `git merge-base`, before concluding anything is outstanding. Later PRs
+  are not all like this: `#16` was merged as a merge commit on 2026-09-13, so
+  its branch *is* an ancestor of upstream's head. Check the merge before
+  assuming either shape.
 
 ### Opening a PR against upstream
 

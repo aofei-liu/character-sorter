@@ -947,9 +947,13 @@ not reuse `addCharacter`, which refetches after every write; it posts N and
 refetches once. It stops at the first failure and keeps the paste text, so a
 re-run is safe — the refetch marks whatever landed as already in the list.
 
-**Ported upstream as a paste box on the edit page** — `#16`, opened
-2026-09-13, 135 lines plus 89 of tests. Same parse rules, reimplemented in
-`sorterinput/paste.py`; the Kotlin is not reusable, only the spec above is.
+**Ported upstream as a paste box on the edit page** — `#16`, opened and
+merged 2026-09-13, 135 lines plus 89 of tests. Same parse rules, reimplemented
+in `sorterinput/paste.py`; the Kotlin is not reusable, only the spec above is.
+It went in as a merge commit rather than a squash, so unlike `#10`-`#12` the
+branch really is an ancestor of upstream `main`. Not in fork `main` yet, and
+deployment is unverified — the paste box sits behind login, so there is no
+anonymous signal of the kind `/api/`'s 401 gives.
 
 - **No preview step.** The confirm screen guards against a partial batch
   across N requests; one `bulk_create` in one POST cannot half-fail.
