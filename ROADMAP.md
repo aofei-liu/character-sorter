@@ -946,6 +946,24 @@ Server constraints: no bulk endpoint, so a batch is N sequential POSTs. It does
 not reuse `addCharacter`, which refetches after every write; it posts N and
 refetches once. It stops at the first failure and keeps the paste text, so a
 re-run is safe — the refetch marks whatever landed as already in the list.
+
+**Ported upstream as a paste box on the edit page** — `#16`, opened
+2026-09-13, 135 lines plus 89 of tests. Same parse rules, reimplemented in
+`sorterinput/paste.py`; the Kotlin is not reusable, only the spec above is.
+
+- **No preview step.** The confirm screen guards against a partial batch
+  across N requests; one `bulk_create` in one POST cannot half-fail.
+- Parsing sits outside the view so it is testable without a request. The view
+  adds one `values_list` dedup query and one `bulk_create`, then redirects.
+- Counts and the first five skipped lines are reported through the messages
+  framework, which was already configured and unused.
+- The paste branch must precede the formset branch: reaching
+  `modformset.is_valid()` with no management form raises rather than
+  returning `False`.
+- `bulk_create` skips model validation, so the parser enforces the 200-char
+  field limit itself.
+- Verified on Path B only (37/37 on the branch). No Python 3.7 here, and the
+  PR body says so rather than implying the pinned stack was exercised.
 ### 7 — Reorder and delete lists from the picker
 
 An "Arrange" mode on the picker: up/down per row, plus delete. Delete was

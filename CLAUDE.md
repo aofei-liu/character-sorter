@@ -256,8 +256,9 @@ generally means Docker.
    landmine below.
 
 With both applied, `manage.py check` is clean (only `models.W042`
-`DEFAULT_AUTO_FIELD` warnings) and **all 19 tests pass** (6 `controller`, 5
-`sorterinput.tests`, 8 `sorterinput.test_api`). Nothing else in the codebase
+`DEFAULT_AUTO_FIELD` warnings) and **all 21 tests pass** (8 `controller`, 5
+`sorterinput.tests`, 8 `sorterinput.test_api`; counted 2026-09-13, and the
+number grows — re-run rather than trusting it). Nothing else in the codebase
 needed touching. Beyond Django/numpy/scipy the app imports `requests` (in
 `sorterinput/views.py`, for image search), so a bare Path B venv needs it too;
 `django-debug-toolbar` and `psycopg2` are the only other pinned deps and both
@@ -317,7 +318,7 @@ Run everything from the `charactersorter/` directory (where `manage.py` lives):
 ```bash
 python manage.py check
 python manage.py migrate
-python manage.py test                    # 19 tests: 6 controller, 5 sorterinput.tests, 8 test_api
+python manage.py test                    # 21 tests: 8 controller, 5 sorterinput.tests, 8 test_api
 python manage.py test controller         # just the algorithm tests
 python manage.py runserver
 python manage.py createsuperuser
