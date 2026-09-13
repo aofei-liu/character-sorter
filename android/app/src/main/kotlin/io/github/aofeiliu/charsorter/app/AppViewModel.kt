@@ -13,6 +13,7 @@ import io.github.aofeiliu.charsorter.client.Graph
 import io.github.aofeiliu.charsorter.client.InvalidRequestException
 import io.github.aofeiliu.charsorter.client.NextComparison
 import io.github.aofeiliu.charsorter.client.NotAuthenticatedException
+import io.github.aofeiliu.charsorter.client.ParsedEntry
 import io.github.aofeiliu.charsorter.client.RankedCharacter
 import io.github.aofeiliu.charsorter.client.Ranking
 import io.github.aofeiliu.charsorter.client.RatingHistory
@@ -38,7 +39,14 @@ sealed interface Screen {
         val character: RankedCharacter
     ) : Screen
     data class ListChart(val list: CharacterList) : Screen
+    data class PasteCharacters(val list: CharacterList) : Screen
+    data class PastePreview(val list: CharacterList) : Screen
 }
+
+/** What happened to one entry in a batch write. */
+enum class WriteResult { ADDED, FAILED, NOT_SENT }
+
+data class PasteWrite(val name: String, val fandom: String, val result: WriteResult)
 
 data class UiState(
     val screen: Screen = Screen.Login,
@@ -86,7 +94,19 @@ data class UiState(
     /** The character whose history the trend screen is showing, if loaded. */
     val history: RatingHistory? = null,
     /** Every character's rating and spread, for the whole-list chart. */
-    val graph: Graph? = null
+    val graph: Graph? = null,
+    /**
+     * The text in the paste editor.
+     *
+     * Held here, not in the editor composable, so leaving for the preview and
+     * coming back restores it exactly — including the lines the parser held
+     * back, which are the reason to come back at all.
+     */
+    val pasteText: String = "",
+    /** A source line the editor should move the caret to, once. */
+    val pasteCaret: Int? = null,
+    /** Per-entry outcome of the last batch write, or null before one runs. */
+    val pasteWrites: List<PasteWrite>? = null
 )
 
 /**
@@ -219,6 +239,80 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteCharacter(list: CharacterList, charId: Int) = runApiCall {
         client.deleteCharacter(list.id, charId)
         loadCharactersBlocking(list)
+    }
+
+    fun openPaste(list: CharacterList) {
+        _state.update {
+            it.copy(
+                screen = Screen.PasteCharacters(list),
+                pasteText = "",
+                pasteCaret = null,
+                pasteWrites = null
+            )
+        }
+    }
+
+    fun setPasteText(text: String) = _state.update { it.copy(pasteText = text) }
+
+    fun openPastePreview(list: CharacterList) =
+        _state.update { it.copy(screen = Screen.PastePreview(list)) }
+
+    /** Returns to the editor, optionally with the caret on [line]. */
+    fun editPasteText(list: CharacterList, line: Int? = null) {
+        _state.update {
+            it.copy(screen = Screen.PasteCharacters(list), pasteCaret = line)
+        }
+    }
+
+    fun pasteCaretHandled() = _state.update { it.copy(pasteCaret = null) }
+
+    /**
+     * Posts each entry, then refetches once.
+     *
+     * `addCharacter` refetches the character list — and the ranking, when the
+     * by-score chip is on — after every single write, which a paste would pay
+     * N times over. This posts N and reads back at the end instead.
+     *
+     * The run stops at the first failure: whatever broke the fifth request
+     * will almost certainly break the sixth, and per-entry results are kept so
+     * the screen can say which landed. Re-running the paste afterwards is safe
+     * without any bookkeeping, because the refetch makes `reviewPaste` mark
+     * the ones that got through as already in the list.
+     */
+    fun addPasted(list: CharacterList, entries: List<ParsedEntry>) = runApiCall {
+        val writes = entries.map {
+            PasteWrite(it.name, it.fandom, WriteResult.NOT_SENT)
+        }.toMutableList()
+        _state.update { it.copy(pasteWrites = writes.toList()) }
+
+        var failure: ApiException? = null
+        for (index in entries.indices) {
+            try {
+                client.addCharacter(list.id, entries[index].name, entries[index].fandom)
+                writes[index] = writes[index].copy(result = WriteResult.ADDED)
+            } catch (err: ApiException) {
+                writes[index] = writes[index].copy(result = WriteResult.FAILED)
+                failure = err
+            }
+            _state.update { it.copy(pasteWrites = writes.toList()) }
+            if (failure != null) {
+                break
+            }
+        }
+
+        loadCharactersBlocking(list)
+        if (failure == null) {
+            _state.update { it.copy(pasteText = "") }
+        } else {
+            throw failure
+        }
+    }
+
+    /** Leaves the write report and returns to the list being edited. */
+    fun closePasteReport(list: CharacterList) {
+        _state.update {
+            it.copy(screen = Screen.EditList(list), pasteWrites = null)
+        }
     }
 
     fun createList(title: String, controllerType: String) = runApiCall {
@@ -367,6 +461,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 true
             }
+            // Back out of the preview is the same call as its "Edit text"
+            // button, so the gesture cannot be the one path that loses a paste.
+            is Screen.PastePreview -> {
+                editPasteText(screen.list)
+                true
+            }
+            is Screen.PasteCharacters -> {
+                _state.update {
+                    it.copy(screen = Screen.EditList(screen.list), pasteWrites = null)
+                }
+                true
+            }
             is Screen.Sorting, is Screen.Ranking, is Screen.EditList -> {
                 backToLists()
                 true
@@ -385,6 +491,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 spreads = null,
                 history = null,
                 graph = null,
+                pasteText = "",
+                pasteCaret = null,
+                pasteWrites = null,
                 undoStack = emptyList()
             )
         }

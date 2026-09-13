@@ -1,0 +1,129 @@
+package io.github.aofeiliu.charsorter.client
+
+/** `Character.name` and `Character.fandom` are both `max_length=200`. */
+const val FIELD_LIMIT = 200
+
+/** Why a pasted line cannot be added. */
+enum class SkipReason {
+    NO_FANDOM,
+    NO_NAME,
+    NAME_TOO_LONG,
+    FANDOM_TOO_LONG
+}
+
+/**
+ * A line that parsed into a character.
+ *
+ * [line] is the 0-based source line, so the editor can put the caret back on
+ * it. [inline] means the fandom came from this line rather than from a
+ * `[Fandom]` header above it.
+ */
+data class ParsedEntry(
+    val line: Int,
+    val name: String,
+    val fandom: String,
+    val inline: Boolean
+)
+
+/** A line that cannot be added, kept so the editor can point at it. */
+data class SkippedLine(val line: Int, val text: String, val reason: SkipReason)
+
+data class PasteParse(val entries: List<ParsedEntry>, val skipped: List<SkippedLine>)
+
+/** Whether an entry would create a character, or already has one. */
+enum class EntryStatus { NEW, IN_LIST, REPEATED }
+
+data class ReviewedEntry(val entry: ParsedEntry, val status: EntryStatus)
+
+/**
+ * Parses pasted text into characters.
+ *
+ * A `[Fandom]` line sets the fandom for the bare names beneath it. A
+ * `Name (Fandom)` or tab-separated line carries its own fandom for that line
+ * only and does not displace the header — the owner chose override over
+ * sticky. A bare name with no header above it has no fandom to inherit, and
+ * the server requires one, so it is skipped here rather than sent to fail.
+ */
+fun parsePaste(text: String): PasteParse {
+    val entries = mutableListOf<ParsedEntry>()
+    val skipped = mutableListOf<SkippedLine>()
+    var header: String? = null
+    val lines = text.lines()
+
+    for (index in lines.indices) {
+        val line = lines[index].trim()
+        if (line.isEmpty()) {
+            continue
+        }
+
+        if (isHeader(line)) {
+            // `[]` clears the fandom rather than setting a blank one the
+            // server would reject, so bare names beneath it are held back.
+            header = line.substring(1, line.length - 1).trim().ifBlank { null }
+            continue
+        }
+
+        val (name, own) = splitEntry(line)
+        val fandom = own ?: header
+        when {
+            name.isEmpty() -> skipped.add(SkippedLine(index, line, SkipReason.NO_NAME))
+            fandom == null -> skipped.add(SkippedLine(index, line, SkipReason.NO_FANDOM))
+            name.length > FIELD_LIMIT ->
+                skipped.add(SkippedLine(index, line, SkipReason.NAME_TOO_LONG))
+            fandom.length > FIELD_LIMIT ->
+                skipped.add(SkippedLine(index, line, SkipReason.FANDOM_TOO_LONG))
+            else -> entries.add(ParsedEntry(index, name, fandom, inline = own != null))
+        }
+    }
+    return PasteParse(entries, skipped)
+}
+
+/**
+ * Marks entries that would not create anything.
+ *
+ * Matching is on name and fandom together, so two characters sharing a name
+ * across fandoms both still get in, and is case-insensitive so a differently
+ * capitalized re-paste is still recognized. [EntryStatus.REPEATED] is the same
+ * pair twice within one paste; only [EntryStatus.NEW] should be posted.
+ */
+fun reviewPaste(entries: List<ParsedEntry>, existing: List<Character>): List<ReviewedEntry> {
+    val known = existing.map { pairKey(it.name, it.fandom) }.toSet()
+    val seen = mutableSetOf<String>()
+    return entries.map { entry ->
+        val key = pairKey(entry.name, entry.fandom)
+        val status = when {
+            key in known -> EntryStatus.IN_LIST
+            !seen.add(key) -> EntryStatus.REPEATED
+            else -> EntryStatus.NEW
+        }
+        ReviewedEntry(entry, status)
+    }
+}
+
+/** Whether the whole line is bracketed, making it a `[Fandom]` header. */
+private fun isHeader(line: String) =
+    line.length >= 2 && line.startsWith("[") && line.endsWith("]")
+
+/**
+ * A line's name and its own fandom, if it carries one.
+ *
+ * A tab wins over trailing parens: it only appears in a spreadsheet paste,
+ * where the split is unambiguous, and cannot be typed by accident.
+ */
+private fun splitEntry(line: String): Pair<String, String?> {
+    val tab = line.indexOf('\t')
+    if (tab >= 0) {
+        return line.take(tab).trim() to line.substring(tab + 1).trim().ifBlank { null }
+    }
+    if (line.endsWith(")")) {
+        val open = line.lastIndexOf('(')
+        if (open >= 0) {
+            return line.take(open).trim() to
+                line.substring(open + 1, line.length - 1).trim().ifBlank { null }
+        }
+    }
+    return line to null
+}
+
+private fun pairKey(name: String, fandom: String) =
+    "${name.lowercase()}\u0000${fandom.lowercase()}"
