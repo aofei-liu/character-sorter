@@ -624,6 +624,7 @@ wanted is blocked on the server, not on effort.
 | 4 | Small hardening | ~50 | None | **Done** (2026-09-12) |
 | 5 | Dedup the `/next` replay | ~30 | None | **Done** (2026-09-12) |
 | 6 | Batch add characters by paste | Large | Yes | **Done** (2026-09-12) |
+| 7 | Reorder and delete lists from the picker | ~280 | Yes | **Done** (2026-09-12) |
 
 **Deferred by decision, not forgotten** (2026-09-10):
 
@@ -945,6 +946,34 @@ Server constraints: no bulk endpoint, so a batch is N sequential POSTs. It does
 not reuse `addCharacter`, which refetches after every write; it posts N and
 refetches once. It stops at the first failure and keeps the paste text, so a
 re-run is safe — the refetch marks whatever landed as already in the list.
+### 7 — Reorder and delete lists from the picker
+
+An "Arrange" mode on the picker: up/down per row, plus delete. Delete was
+nearly free — `deleteList` and the destructive-confirm dialog both already
+existed. The confirm stays, because deleting a list cascades its characters
+*and* its whole `SortRecord` history, unrecoverably.
+
+Reorder had nowhere to store an order: `CharacterList` has no position field
+and `api.lists()` hard-codes `.order_by("id")`.
+
+Decisions, not to be relitigated:
+
+- **The order is phone-local.** A server-side field would mean a migration
+  against the live production Postgres, an upstream PR, a deploy and a backfill
+  — too much for a cosmetic feature. Accepted cost: per-device, invisible to
+  the website. If it is ever wanted server-side, the local order becomes the
+  cache in front of the field.
+- **Up/down arrows, not drag.** Compose BOM 2024.10.01 has no reorderable
+  `LazyColumn`, so dragging meant a third-party dep or ~200 lines of gesture
+  code in `:app`, the one module no session here can verify.
+
+Reconciliation lives in `:client` with 8 tests: prune ids the server no longer
+returns, append unseen lists in the server's own order (so a list made on the
+website still appears), otherwise preserve the saved order. It runs inside
+`loadListsBlocking` — the single point lists enter state — so a list deleted on
+the website prunes itself and `deleteList` needed no change. Prefs hold a
+delimited string, not `SessionStore`'s `StringSet`, since a set has no order.
+Arrange mode is screen-local; the order it produces persists.
 
 ### Deferred: the offline queue
 

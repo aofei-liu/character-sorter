@@ -11,6 +11,7 @@ import io.github.aofeiliu.charsorter.client.CharacterList
 import io.github.aofeiliu.charsorter.client.Comparison
 import io.github.aofeiliu.charsorter.client.Graph
 import io.github.aofeiliu.charsorter.client.InvalidRequestException
+import io.github.aofeiliu.charsorter.client.ListOrder
 import io.github.aofeiliu.charsorter.client.NextComparison
 import io.github.aofeiliu.charsorter.client.NotAuthenticatedException
 import io.github.aofeiliu.charsorter.client.ParsedEntry
@@ -118,6 +119,7 @@ data class UiState(
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val client = CharSorterClient()
     private val sessionStore = SessionStore(application)
+    private val orderStore = ListOrderStore(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -508,9 +510,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
+    /**
+     * Reads the lists and applies the caller's saved order.
+     *
+     * The reconciled order is written back when it differs, which is what
+     * prunes an id whose list is gone — deleted here, or on the website. Every
+     * path that changes the lists already funnels through here, so nothing
+     * else has to remember to prune.
+     */
     private fun loadListsBlocking() {
-        val lists = client.lists()
+        val saved = orderStore.restore()
+        val lists = ListOrder.apply(client.lists(), saved)
+        val ids = lists.map { it.id }
+        if (ids != saved) {
+            orderStore.save(ids)
+        }
         _state.update { it.copy(lists = lists) }
+    }
+
+    /** Shifts a list one place in the local order. No server call: the order is ours. */
+    fun moveList(list: CharacterList, offset: Int) {
+        val ordered = _state.value.lists
+        val ids = ListOrder.moved(ordered.map { it.id }, list.id, offset)
+        orderStore.save(ids)
+        _state.update { it.copy(lists = ListOrder.apply(ordered, ids)) }
     }
 
     /**
