@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.aofeiliu.charsorter.client.CharacterList
 import io.github.aofeiliu.charsorter.client.RankedCharacter
@@ -56,6 +57,8 @@ fun RankingScreen(
                 list.title.uppercase(),
                 style = CharSorterType.ScreenTitle,
                 color = CharSorterColor.Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(end = 12.dp)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.aofeiliu.charsorter.client.Character
 import io.github.aofeiliu.charsorter.client.CharacterList
@@ -55,6 +56,8 @@ fun SortScreen(
                 list.title.uppercase(),
                 style = CharSorterType.ScreenTitle,
                 color = CharSorterColor.Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(end = 12.dp)
             )
             OutlinedButton(
