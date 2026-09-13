@@ -21,8 +21,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.aofeiliu.charsorter.client.Character
 import io.github.aofeiliu.charsorter.client.CharacterList
@@ -54,6 +56,8 @@ fun SortScreen(
                 list.title.uppercase(),
                 style = CharSorterType.ScreenTitle,
                 color = CharSorterColor.Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(end = 12.dp)
             )
             OutlinedButton(
@@ -82,31 +86,13 @@ fun SortScreen(
             }
         }
 
+        // Checked ahead of `busy`: a pair already on screen stays on screen
+        // for the round trip that answers it, so answering doesn't blank the
+        // cards to a spinner on every tap. Only a load with nothing to show
+        // yet -- first entry, or the gap after an answered pair is cleared
+        // and before the next one arrives -- falls through to the spinner.
         when {
-            busy -> Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center
-            ) {
-                CircularProgressIndicator(
-                    color = CharSorterColor.AccentDark,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-            }
-            pending == null -> Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "Couldn't load the next comparison.",
-                    style = CharSorterType.DialogBody,
-                    color = CharSorterColor.Muted
-                )
-                TextButton(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) {
-                    Text("Retry", style = CharSorterType.ButtonSecondary, color = CharSorterColor.Link)
-                }
-            }
-            pending.done -> Column(
+            pending?.done == true -> Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -119,27 +105,30 @@ fun SortScreen(
                     modifier = Modifier.padding(top = 16.dp)
                 )
             }
-            else -> {
+            pending != null -> {
                 val char1 = pending.char1
                 val char2 = pending.char2
                 if (char1 != null && char2 != null) {
                     Column(
-                        modifier = Modifier.weight(1f).padding(top = 16.dp),
+                        modifier = Modifier.weight(1f).padding(top = 16.dp).alpha(if (busy) 0.6f else 1f),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         ComparisonCard(
                             character = char1,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
+                            enabled = !busy,
                             onClick = { onAnswer(Verdict.CHAR1_WINS) }
                         )
                         ComparisonCard(
                             character = char2,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
+                            enabled = !busy,
                             onClick = { onAnswer(Verdict.CHAR2_WINS) }
                         )
                     }
                     OutlinedButton(
                         onClick = { onAnswer(Verdict.TIE) },
+                        enabled = !busy,
                         shape = CharSorterShape.Pill,
                         border = BorderStroke(1.dp, CharSorterColor.NeutralBorder.copy(alpha = 0.65f)),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.NeutralText),
@@ -153,12 +142,40 @@ fun SortScreen(
                     }
                 }
             }
+            busy -> Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center
+            ) {
+                CircularProgressIndicator(
+                    color = CharSorterColor.AccentDark,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
+            else -> Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "Couldn't load the next comparison.",
+                    style = CharSorterType.DialogBody,
+                    color = CharSorterColor.Muted
+                )
+                TextButton(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) {
+                    Text("Retry", style = CharSorterType.ButtonSecondary, color = CharSorterColor.Link)
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ComparisonCard(character: Character, modifier: Modifier, onClick: () -> Unit) {
+private fun ComparisonCard(
+    character: Character,
+    modifier: Modifier,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
     Box(
         modifier = modifier
             .background(
@@ -166,7 +183,7 @@ private fun ComparisonCard(character: Character, modifier: Modifier, onClick: ()
                 shape = CharSorterShape.Card
             )
             .border(1.dp, CharSorterColor.AccentDark.copy(alpha = 0.42f), CharSorterShape.Card)
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(24.dp)
     ) {
         DiamondAccent(

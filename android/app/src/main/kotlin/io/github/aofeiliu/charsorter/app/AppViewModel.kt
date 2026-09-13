@@ -10,6 +10,7 @@ import io.github.aofeiliu.charsorter.client.Character
 import io.github.aofeiliu.charsorter.client.CharacterList
 import io.github.aofeiliu.charsorter.client.Comparison
 import io.github.aofeiliu.charsorter.client.Graph
+import io.github.aofeiliu.charsorter.client.InvalidRequestException
 import io.github.aofeiliu.charsorter.client.NextComparison
 import io.github.aofeiliu.charsorter.client.NotAuthenticatedException
 import io.github.aofeiliu.charsorter.client.RankedCharacter
@@ -286,6 +287,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(spreads = spreads) }
     }
 
+    /** Re-reads the ranking after a failed fetch left the screen empty. */
+    fun loadRanking(list: CharacterList) = runApiCall {
+        val ranking = client.ranking(list.id)
+        _state.update { it.copy(ranking = ranking) }
+        val spreads = spreadsFor(ranking)
+        _state.update { it.copy(spreads = spreads) }
+    }
+
     /**
      * The spread behind each ranked character, or null if it cannot be had.
      *
@@ -411,12 +420,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 sessionStore.clear()
                 _state.update { UiState(screen = Screen.Login, error = err.message) }
             } catch (err: ApiException) {
-                _state.update { it.copy(error = err.message) }
+                _state.update { it.copy(error = describe(err)) }
             } catch (err: IOException) {
                 _state.update { it.copy(error = "Network error: ${err.message}") }
             } finally {
                 _state.update { it.copy(busy = false) }
             }
+        }
+    }
+
+    /**
+     * Renders an [ApiException] for the Snackbar.
+     *
+     * [InvalidRequestException.fields] names which field a `ModelForm`
+     * rejected and why; folding it into the message is the difference
+     * between "The request was rejected." and "title: This field is
+     * required."
+     */
+    private fun describe(err: ApiException): String {
+        if (err !is InvalidRequestException || err.fields.isEmpty()) {
+            return err.message ?: "Something went wrong."
+        }
+        return err.fields.entries.joinToString("; ") { (field, reasons) ->
+            "$field: ${reasons.joinToString(", ")}"
         }
     }
 }

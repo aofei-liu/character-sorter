@@ -74,8 +74,10 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                         list = screen.list,
                         ranking = state.ranking,
                         spreads = state.spreads,
+                        busy = state.busy,
                         onOpenCharacter = { viewModel.openForTrend(screen.list, it) },
                         onOpenChart = { viewModel.openForChart(screen.list) },
+                        onRetry = { viewModel.loadRanking(screen.list) },
                         onBack = viewModel::backToLists
                     )
                     is Screen.ListChart -> ListChartScreen(
