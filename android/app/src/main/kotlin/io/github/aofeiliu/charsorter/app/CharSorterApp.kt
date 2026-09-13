@@ -19,10 +19,14 @@ import io.github.aofeiliu.charsorter.app.ui.EditListScreen
 import io.github.aofeiliu.charsorter.app.ui.ListChartScreen
 import io.github.aofeiliu.charsorter.app.ui.ListPickerScreen
 import io.github.aofeiliu.charsorter.app.ui.LoginScreen
+import io.github.aofeiliu.charsorter.app.ui.PasteScreen
+import io.github.aofeiliu.charsorter.app.ui.PastePreviewScreen
 import io.github.aofeiliu.charsorter.app.ui.RankingScreen
 import io.github.aofeiliu.charsorter.app.ui.SortScreen
 import io.github.aofeiliu.charsorter.app.ui.TrendScreen
 import io.github.aofeiliu.charsorter.app.ui.charSorterBackground
+import io.github.aofeiliu.charsorter.client.parsePaste
+import io.github.aofeiliu.charsorter.client.reviewPaste
 
 @Composable
 fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
@@ -113,9 +117,35 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                         onRenameList = { viewModel.renameList(screen.list, it) },
                         onDeleteList = { viewModel.deleteList(screen.list) },
                         onSetSort = { viewModel.setEditSort(screen.list, it) },
+                        onPasteMany = { viewModel.openPaste(screen.list) },
                         onRetry = { viewModel.loadCharacters(screen.list) },
                         onBack = viewModel::backToLists
                     )
+                    is Screen.PasteCharacters -> PasteScreen(
+                        list = screen.list,
+                        text = state.pasteText,
+                        parse = parsePaste(state.pasteText),
+                        caretLine = state.pasteCaret,
+                        busy = state.busy,
+                        onTextChange = viewModel::setPasteText,
+                        onCaretHandled = viewModel::pasteCaretHandled,
+                        onPreview = { viewModel.openPastePreview(screen.list) },
+                        onCancel = { viewModel.back() }
+                    )
+                    is Screen.PastePreview -> {
+                        val parse = parsePaste(state.pasteText)
+                        PastePreviewScreen(
+                            list = screen.list,
+                            reviewed = reviewPaste(parse.entries, state.characters.orEmpty()),
+                            skipped = parse.skipped,
+                            writes = state.pasteWrites,
+                            busy = state.busy,
+                            onEditText = { viewModel.editPasteText(screen.list) },
+                            onJumpToLine = { viewModel.editPasteText(screen.list, it) },
+                            onConfirm = { viewModel.addPasted(screen.list, it) },
+                            onDone = { viewModel.closePasteReport(screen.list) }
+                        )
+                    }
                 }
 
                 state.error?.let { message ->

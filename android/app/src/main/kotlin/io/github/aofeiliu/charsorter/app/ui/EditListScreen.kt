@@ -72,6 +72,7 @@ fun EditListScreen(
     onRenameList: (String) -> Unit,
     onDeleteList: () -> Unit,
     onSetSort: (Boolean) -> Unit,
+    onPasteMany: () -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -110,6 +111,9 @@ fun EditListScreen(
         Row(modifier = Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
             TextButton(onClick = { dialog = EditDialog.RenameList }, enabled = !busy) {
                 Text("Rename", style = CharSorterType.ButtonSecondary, color = CharSorterColor.Link)
+            }
+            TextButton(onClick = onPasteMany, enabled = !busy) {
+                Text("Paste many", style = CharSorterType.ButtonSecondary, color = CharSorterColor.Link)
             }
             TextButton(onClick = { dialog = EditDialog.DeleteList }, enabled = !busy) {
                 Text("Delete list", style = CharSorterType.ButtonSecondary, color = CharSorterColor.Destructive)
