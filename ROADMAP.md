@@ -757,11 +757,11 @@ no trend view, and further visualization work is expected to land in the app
 rather than upstream. Only the endpoint had to be shared, because the ratings
 it replays live in the production database.
 
-**Minor, local-only: the endpoint's source is not in fork `main`.** It exists
-only on `claude/rating-history-upstream`, cut from upstream's head, so this
-repo's own Django app 404s on a route production serves — which costs nothing
-against the live site and only stops `LocalServerIntegrationTest` from
-reaching the trend screen.
+**Resolved 2026-09-13:** the endpoint's source was missing from fork `main`
+for a while — it existed only on `claude/rating-history-upstream` — so this
+repo's own Django app 404d on a route production served, which stopped
+`LocalServerIntegrationTest` from reaching the trend screen. Fork `main` has
+since been synced with upstream and carries it.
 
 ### 3 — Whole-list Glicko chart
 
@@ -954,8 +954,8 @@ It went in as a merge commit rather than a squash, so unlike `#10`-`#12` the
 branch really is an ancestor of upstream `main`. **Deployed**, confirmed by
 the owner against the live site the same day. That check cannot be automated
 the way `#11`/`#12` were: the paste box sits behind login, so there is no
-anonymous signal of the kind `/api/`'s 401 gives. Still absent from fork
-`main`.
+anonymous signal of the kind `/api/`'s 401 gives. In fork `main` since the
+2026-09-13 sync.
 
 - **No preview step.** The confirm screen guards against a partial batch
   across N requests; one `bulk_create` in one POST cannot half-fail.
