@@ -55,6 +55,8 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                         onViewRanking = viewModel::openForRanking,
                         onEdit = viewModel::openForEditing,
                         onCreateList = viewModel::createList,
+                        onMoveList = viewModel::moveList,
+                        onDeleteList = viewModel::deleteList,
                         onLogout = viewModel::logout
                     )
                     is Screen.Sorting -> SortScreen(

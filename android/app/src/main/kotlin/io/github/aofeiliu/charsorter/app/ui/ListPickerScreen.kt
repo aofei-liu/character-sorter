@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.aofeiliu.charsorter.client.CharacterList
 
@@ -48,9 +49,14 @@ fun ListPickerScreen(
     onViewRanking: (CharacterList) -> Unit,
     onEdit: (CharacterList) -> Unit,
     onCreateList: (String, String) -> Unit,
+    onMoveList: (CharacterList, Int) -> Unit,
+    onDeleteList: (CharacterList) -> Unit,
     onLogout: () -> Unit
 ) {
     var creating by remember { mutableStateOf(false) }
+    // Ephemeral: a mode you leave by tapping Done, not state worth persisting.
+    var arranging by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf<CharacterList?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         Row(
@@ -58,7 +64,23 @@ fun ListPickerScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Your lists".uppercase(), style = CharSorterType.ScreenTitleLarge, color = CharSorterColor.Ink)
+            Text(
+                "Your lists".uppercase(),
+                style = CharSorterType.ScreenTitleLarge,
+                color = CharSorterColor.Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (lists.isNotEmpty()) {
+                TextButton(onClick = { arranging = !arranging }) {
+                    Text(
+                        if (arranging) "Done" else "Arrange",
+                        style = CharSorterType.ButtonSecondary,
+                        color = CharSorterColor.Link
+                    )
+                }
+            }
             TextButton(onClick = onLogout) {
                 Text("Log out", style = CharSorterType.ButtonSecondary, color = CharSorterColor.Muted)
             }
@@ -98,8 +120,20 @@ fun ListPickerScreen(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(lists) { list ->
-                    ListCard(list, onSort, onViewRanking, onEdit)
+                itemsIndexed(lists, key = { _, list -> list.id }) { index, list ->
+                    if (arranging) {
+                        ArrangeCard(
+                            list = list,
+                            canMoveUp = index > 0,
+                            canMoveDown = index < lists.lastIndex,
+                            enabled = !busy,
+                            onMoveUp = { onMoveList(list, -1) },
+                            onMoveDown = { onMoveList(list, 1) },
+                            onDelete = { deleting = list }
+                        )
+                    } else {
+                        ListCard(list, onSort, onViewRanking, onEdit)
+                    }
                 }
             }
         }
@@ -113,6 +147,88 @@ fun ListPickerScreen(
             },
             onDismiss = { creating = false }
         )
+    }
+
+    deleting?.let { list ->
+        ConfirmDeleteDialog(
+            title = "Delete ${list.title}?",
+            body = "This deletes the list, every character in it, and the whole " +
+                "comparison history. It cannot be undone.",
+            onConfirm = {
+                deleting = null
+                onDeleteList(list)
+            },
+            onDismiss = { deleting = null }
+        )
+    }
+}
+
+/** The same card in arrange mode: move it, or delete it. */
+@Composable
+private fun ArrangeCard(
+    list: CharacterList,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    enabled: Boolean,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                brush = Brush.linearGradient(listOf(CharSorterColor.CardFillStart, CharSorterColor.CardFillEnd)),
+                shape = CharSorterShape.Card
+            )
+            .border(1.dp, CharSorterColor.AccentDark.copy(alpha = 0.4f), CharSorterShape.Card)
+            .padding(20.dp)
+    ) {
+        Text(list.title.uppercase(), style = CharSorterType.ListTitle, color = CharSorterColor.Ink)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            MoveButton("↑", enabled = enabled && canMoveUp, onClick = onMoveUp, modifier = Modifier.weight(1f))
+            MoveButton("↓", enabled = enabled && canMoveDown, onClick = onMoveDown, modifier = Modifier.weight(1f))
+            OutlinedButton(
+                onClick = onDelete,
+                enabled = enabled,
+                shape = CharSorterShape.Pill,
+                border = BorderStroke(1.dp, CharSorterColor.Destructive.copy(alpha = 0.5f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = CharSorterColor.Destructive),
+                contentPadding = RowButtonPadding,
+                modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+            ) {
+                Text("Delete", style = CharSorterType.ButtonSecondary, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoveButton(
+    glyph: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        shape = CharSorterShape.Pill,
+        border = BorderStroke(
+            1.dp,
+            if (enabled) CharSorterColor.AccentDark.copy(alpha = 0.55f) else CharSorterColor.DisabledFillBorder
+        ),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = CharSorterColor.Link,
+            disabledContentColor = CharSorterColor.DisabledText
+        ),
+        contentPadding = RowButtonPadding,
+        modifier = modifier.heightIn(min = 44.dp)
+    ) {
+        Text(glyph, style = CharSorterType.ButtonPrimarySmall, maxLines = 1)
     }
 }
 
