@@ -621,7 +621,7 @@ wanted is blocked on the server, not on effort.
 | 1 | List and character editing | Large | Substantial | **Done** (2026-09-11) |
 | 2 | Per-character ranking history plot | Large | Yes | **Done** (2026-09-12) |
 | 3 | Whole-list Glicko chart | ~200 | Yes | **Done** (2026-09-11) |
-| 4 | Small hardening | ~50 | None | Nothing |
+| 4 | Small hardening | ~50 | None | **Done** (2026-09-12) |
 | 5 | Dedup the `/next` replay | ~30 | None | **Done** (2026-09-12) |
 
 **Deferred by decision, not forgotten** (2026-09-10):
@@ -815,6 +815,27 @@ Unrelated papercuts, independent and pick-up-anytime:
   out to the list picker and re-entering. The sort screen grew a Retry branch
   when the duplicate-comparison bug was fixed — this is the same pattern, and
   the same three lines.
+
+**Done 2026-09-12**, all four in one branch, as four commits:
+
+- The flicker fix reorders `SortScreen`'s `when` to check `pending` ahead of
+  `busy`, so a pair already on screen stays up (dimmed, non-clickable) for the
+  round trip that answers it. The spinner now only covers a load with nothing
+  to show yet.
+- **"Login errors are vague" turned out to be misnamed against the source.**
+  `client.login()` only ever throws `LoginFailedException`, never
+  `InvalidRequestException` — the login form was never the one losing field
+  detail. The real gap is `AppViewModel.runApiCall`'s generic catch, shared by
+  every screen with a form (add character, create list, rename, …), which
+  rendered any `ApiException` as `err.message` and dropped `.fields` on the
+  floor. Fixed there instead, which covers login's own future error shapes
+  for free if the server ever changes how it reports one.
+- The long-title fix turned out to apply to four screens, not one:
+  `SortScreen`, `RankingScreen`, `EditListScreen` and `ListChartScreen` all
+  share the same weighted-Text-next-to-a-button header, so all four titles now
+  cap at one line with an ellipsis rather than only the sort screen's.
+- The ranking screen's retry is the same three-line pattern as the sort
+  screen's, plus a `loadRanking()` on `AppViewModel` for it to call.
 
 A note on where these keep coming from: the duplicate-comparison bug fixed in
 this PR lived in `AppViewModel`'s state machine, which is exactly the "risky
