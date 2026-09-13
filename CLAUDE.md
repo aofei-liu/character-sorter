@@ -436,15 +436,21 @@ victim's name through the "Undo last sort" button. `editcharlists` already
 filtered `ModifyCharlistFormset` on POST; earlier notes here claiming otherwise
 were wrong.
 
-**Template XSS.** `graph.html` renders `{{ graph_info.characters|safe }}` inside
-a `<script>` block. The value is `json.dumps`'d, which escapes quotes but *not*
-`</script>` — a character named `</script><script>…` breaks out. The `TODO`
-file flags this ("Make sure javascript/html insertion can't occur via character
-names lol"). Use `json_script` or escape `<` when fixing.
+**Template XSS (fixed).** `graph.html` inlines `graph_info` values in a
+`<script>` block via `|safe`, which was a real hole: `json.dumps` escapes
+quotes but not `</script>`, so a character named `</script><script>…` broke
+out. `controller.models.dumps_for_script` now does the `json.dumps` and
+additionally escapes `<` as `<`, so every value reaching the template is
+inert and the `|safe` uses there are correct. Keep serializing through that
+helper rather than bare `json.dumps` for anything inlined in a script block.
+The upstream `TODO` file still lists this under Security ("Make sure
+javascript/html insertion can't occur via character names lol"); that entry is
+stale, and the file is upstream's, so it is left alone.
 
-**`db.sqlite3` is tracked and empty.** It's a 0-byte stub with no tables. It is
-not a data source and not a usable database. Consider `git rm --cached`-ing it
-and adding it to `.gitignore`.
+**`db.sqlite3` is no longer tracked.** It was a 0-byte stub with no tables —
+not a data source and not a usable database — and is now `git rm --cached`'d
+and gitignored, so a local dev database can live at that path without showing
+up in `git status`. Don't re-add it.
 
 **Migration history is messy.** `controller/` migrations 0001–0005 build an
 `InsertionSortController` model, tear it down, rename `InsertionSortRecord` →
