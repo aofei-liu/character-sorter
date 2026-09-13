@@ -256,8 +256,8 @@ generally means Docker.
    landmine below.
 
 With both applied, `manage.py check` is clean (only `models.W042`
-`DEFAULT_AUTO_FIELD` warnings) and **all 21 tests pass** (8 `controller`, 5
-`sorterinput.tests`, 8 `sorterinput.test_api`; counted 2026-09-13, and the
+`DEFAULT_AUTO_FIELD` warnings) and **all 37 tests pass** (8 `controller`, 16
+`sorterinput.tests`, 13 `sorterinput.test_api`; counted 2026-09-13, and the
 number grows — re-run rather than trusting it). Nothing else in the codebase
 needed touching. Beyond Django/numpy/scipy the app imports `requests` (in
 `sorterinput/views.py`, for image search), so a bare Path B venv needs it too;
@@ -318,7 +318,7 @@ Run everything from the `charactersorter/` directory (where `manage.py` lives):
 ```bash
 python manage.py check
 python manage.py migrate
-python manage.py test                    # 21 tests: 8 controller, 5 sorterinput.tests, 8 test_api
+python manage.py test                    # 37 tests: 8 controller, 16 sorterinput.tests, 13 test_api
 python manage.py test controller         # just the algorithm tests
 python manage.py runserver
 python manage.py createsuperuser
@@ -490,6 +490,14 @@ would be reasonable if you're modernizing anyway.
   fork-only docs (`CLAUDE.md`, `ROADMAP.md`, `CONTRIBUTING.md`) plus every
   merged change. Anything going upstream needs its own branch cut from
   upstream's head — see below.
+- **Re-syncing `main` after upstream merges** (done 2026-09-13, when it was
+  three merges behind): every difference in `charactersorter/` has so far been
+  upstream-ahead, so the sync is `git checkout upstream/main -- charactersorter/`
+  on a branch, then re-untrack `db.sqlite3` — the one intentional fork
+  difference. Merging the two histories is not needed and would conflict on
+  upstream's squashes. Check the assumption with
+  `git diff upstream/main main -- charactersorter/` first; `android/` and the
+  fork-only docs are fork-ahead and must not be touched by the sync.
 - The three `claude/*-upstream` branches are **spent**. Each was cut from
   upstream's head for a cross-fork PR, all three merged as `#10`/`#11`/`#12`,
   and every file they touched is now byte-identical in `main`. They are not
