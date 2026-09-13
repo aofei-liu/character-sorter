@@ -623,6 +623,7 @@ wanted is blocked on the server, not on effort.
 | 3 | Whole-list Glicko chart | ~200 | Yes | **Done** (2026-09-11) |
 | 4 | Small hardening | ~50 | None | **Done** (2026-09-12) |
 | 5 | Dedup the `/next` replay | ~30 | None | **Done** (2026-09-12) |
+| 6 | Batch add characters by paste | Large | Yes | **Done** (2026-09-12) |
 
 **Deferred by decision, not forgotten** (2026-09-10):
 
@@ -910,6 +911,40 @@ built inline during `compute_ratings`, matches `SortRecord.get_last_matches`
 exactly, and `get_next_comparison`/`get_sorted_chars`/`get_annotations`/
 `get_graph_info` all still run clean. Also reran the full suite under Path B:
 20/20.
+
+### 6 — Batch add characters by paste
+
+A "Paste many" screen: paste text, confirm the parse, post. Parser in
+`:client` with 23 tests.
+
+Two line formats, mixable: inline `Name (Fandom)`, and a `[Fandom]` header
+supplying the fandom for bare names beneath it. The header form exists because
+a fandom is **mandatory server-side** (`CharacterForm` over
+`["name", "fandom"]`, and `Character.fandom` has no `blank=True`), so a bare
+name would be rejected.
+
+Decisions, not to be relitigated:
+
+- Inline fandom is a one-line **override**, not sticky.
+- Duplicates are **skipped**, matched case-insensitively on name *and* fandom.
+  A repeat within one paste reports separately from one already in the list.
+- Tab beats trailing parens; `[]` clears the fandom; empty parens fall back to
+  the header.
+- Preview groups by **resolved** fandom — the only view that shows a header
+  applied to the wrong names. Nothing is written until it is confirmed; the
+  text lives in `UiState`, so preview→editor is lossless.
+
+Rejected: **TSV import** (the friction is getting the file onto the phone, and
+whoever prepares one is at a desktop where the website already works) and
+**Keep/Docs import** (Keep has no official API; Docs means a Cloud project and
+OAuth beside our one session cookie). If the Keep case returns, the cheap route
+is an `ACTION_SEND` share target into the same parser — one intent filter plus
+a list-picker step, since a share carries text but no list.
+
+Server constraints: no bulk endpoint, so a batch is N sequential POSTs. It does
+not reuse `addCharacter`, which refetches after every write; it posts N and
+refetches once. It stops at the first failure and keeps the paste text, so a
+re-run is safe — the refetch marks whatever landed as already in the list.
 
 ### Deferred: the offline queue
 
