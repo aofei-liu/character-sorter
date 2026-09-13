@@ -16,6 +16,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,8 +44,10 @@ fun RankingScreen(
     list: CharacterList,
     ranking: Ranking?,
     spreads: Map<Int, RatingSpread>?,
+    busy: Boolean,
     onOpenCharacter: (RankedCharacter) -> Unit,
     onOpenChart: () -> Unit,
+    onRetry: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp)) {
@@ -101,10 +104,27 @@ fun RankingScreen(
             }
         }
         if (ranking == null) {
-            CircularProgressIndicator(
-                color = CharSorterColor.AccentDark,
-                modifier = Modifier.padding(top = 24.dp)
-            )
+            if (busy) {
+                CircularProgressIndicator(
+                    color = CharSorterColor.AccentDark,
+                    modifier = Modifier.padding(top = 24.dp)
+                )
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Couldn't load the ranking.",
+                        style = CharSorterType.DialogBody,
+                        color = CharSorterColor.Muted
+                    )
+                    TextButton(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) {
+                        Text("Retry", style = CharSorterType.ButtonSecondary, color = CharSorterColor.Link)
+                    }
+                }
+            }
         } else {
             LazyColumn(modifier = Modifier.padding(top = 8.dp)) {
                 items(ranking.characters) { char ->

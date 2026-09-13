@@ -287,6 +287,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(spreads = spreads) }
     }
 
+    /** Re-reads the ranking after a failed fetch left the screen empty. */
+    fun loadRanking(list: CharacterList) = runApiCall {
+        val ranking = client.ranking(list.id)
+        _state.update { it.copy(ranking = ranking) }
+        val spreads = spreadsFor(ranking)
+        _state.update { it.copy(spreads = spreads) }
+    }
+
     /**
      * The spread behind each ranked character, or null if it cannot be had.
      *
