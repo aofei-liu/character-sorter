@@ -28,7 +28,11 @@ The fork exists to build a mobile-friendly version of the UI, which must read
 and write the **live database behind `charsorter.lndyn.com`** rather than a
 local copy. That constrains what code may be written here — most importantly,
 anything destined for the upstream deployment must run on Django 2.0.6 /
-Python 3.7. Planning, sequencing and rationale live in
+Python 3.5.2 — the server's `~/env` venv, read straight off
+`charsorter.lndyn.com` on 2026-09-13 (`django --version` → 2.0.6, `python` →
+3.5.2), not the 3.7 this doc once assumed. 3.5 is the stricter floor: no
+f-strings (3.6), no variable annotations (3.6), no reliance on insertion-ordered
+dicts (3.7). Planning, sequencing and rationale live in
 [`ROADMAP.md`](ROADMAP.md); this file covers only the code as it stands.
 
 ## Repository layout
@@ -233,7 +237,8 @@ also have no wheels for modern Python.
 
 So there are two paths, and you should know which one you're on:
 
-**Path A — reproduce the original stack.** Needs Python ≤ 3.7. There is no
+**Path A — reproduce the original stack.** Needs Python ≤ 3.7 (production is
+3.5.2 specifically). There is no
 pyenv/conda in the default remote container (`python3.10`–`3.13` only), so this
 generally means Docker.
 
@@ -266,7 +271,7 @@ have current releases.
 
 > **Do not commit these two changes as part of a feature branch.** They are a
 > local convenience for running the code on a modern interpreter. The upstream
-> deployment runs Django 2.0.6 / Python 3.7, and any change destined for it must
+> deployment runs Django 2.0.6 / Python 3.5.2, and any change destined for it must
 > run there — so a diff that quietly carries the `urls.py` rewrite or the
 > migration edit will break production. Keep them as uncommitted working-tree
 > edits, or as a separate branch you never merge into feature work. Modernizing
@@ -566,7 +571,7 @@ Either way:
 - Cut the branch from upstream's actual head, not from fork `main`, and keep
   fork-only docs (`CLAUDE.md`, `ROADMAP.md`, `CONTRIBUTING.md`) out of it.
 - Verify on Django 2.0.6 (Path A) before opening it, per "Running the code".
-  Where no Python 3.7 environment is available, say so plainly in the PR body
+  Where no Python 3.5 environment is available, say so plainly in the PR body
   rather than letting the maintainer assume the pinned stack was exercised —
   production runs it, and a silent gap there is the expensive kind.
 - Push the branch to `aofei-liu/character-sorter` — that part works normally.

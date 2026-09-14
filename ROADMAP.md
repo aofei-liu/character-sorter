@@ -61,9 +61,14 @@ does not resolve.
 
 ### Consequence: no modern Django in anything sent upstream
 
-Anything running on the upstream host must run on **Django 2.0.6 / Python 3.7**.
-The modernization path in `CLAUDE.md` ("Path B") still applies to *local
-development of this fork*, but no upstream PR may depend on a modern Django.
+Anything running on the upstream host must run on **Django 2.0.6 / Python
+3.5.2** — read off the server's `~/env` venv on 2026-09-13 (`django --version`
+→ 2.0.6, `python` → 3.5.2), not the 3.7 assumed earlier. 3.5 is the stricter
+floor (no f-strings, no variable annotations, no insertion-ordered dicts), and
+the Path A check below ran on a 3.7.12 sandbox, so it did not exercise the true
+prod interpreter. The modernization path in `CLAUDE.md` ("Path B") still applies
+to *local development of this fork*, but no upstream PR may depend on a modern
+Django.
 
 This costs nothing for the responsive UI — a viewport tag, CSS, and template
 structure are version-agnostic. It matters only for the API; see PR 3.
