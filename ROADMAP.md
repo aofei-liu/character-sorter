@@ -1073,9 +1073,22 @@ Decisions, not to be relitigated:
 - **PR shape.** The constant split, the retune and the per-list settings ship
   as one PR: the retune alone would move every upstream user's rankings, so
   the settings and their migration are a prerequisite for merge, not a
-  follow-up. Entry 9 is a separate, later PR. Both need verifying on Django
-  2.0.6 / Python 3.5.2 before they go up; a modern-Python test run is not
-  evidence for the pinned stack.
+  follow-up. Entry 9 is a separate, later PR.
+- **Verified on the pinned stack, 2026-09-15.** 49 tests pass under Python
+  3.5.2 / Django 2.0.6 in a scratch clone on the server, against SQLite with
+  `MIGRATION_MODULES = {"controller": None}` (the role lacks `CREATEDB`, so a
+  Postgres test database could not be built; the SQLite run still exercises
+  the interpreter and the framework, which is the point). `sqlmigrate
+  sorterinput 0005` against the live Postgres shows the four `ADD COLUMN`
+  carrying the *old* defaults and the two `AlterField` operations emitting no
+  SQL at all — Django drops the database-level default right after backfilling
+  and applies defaults in Python, so changing one is a pure state change.
+  That is the merge-safety property, confirmed against the real schema.
+- **The validators are form-level only.** The sole database constraint is
+  `CHECK (>= 0)` from `PositiveIntegerField`. Forms, the API and the admin all
+  run them; a direct `objects.create(rd_reset_days=0)` would not, and would
+  then raise `ZeroDivisionError` in `settings_for`. Accepted: nothing writes
+  these outside a form.
 
 ### 9 — Chaos and focus modes
 
