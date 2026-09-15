@@ -1024,8 +1024,8 @@ Decisions, not to be relitigated:
   `get_match_weight`, where it governs how strongly a long-unseen pairing is
   preferred. Split them: `RD_RESET_TIME` for decay, `MATCH_RECENCY_CAP` (stays
   90) for selection. Otherwise retuning decay silently makes rematches far
-  less likely — at 730 a pair met 100 days ago drops to 14% of a never-met
-  pair's weight, against parity today.
+  less likely — had the cap moved to 365 with it, a pair met 100 days ago
+  would drop to 27% of a never-met pair's weight, against parity today.
 - **Split `DEFAULT_RD` in two.** It currently serves as both "a new character's
   uncertainty" and "the ceiling time-decay climbs to", which is why stale and
   never-compared are indistinguishable after ~90 days idle — the shared cause
@@ -1033,10 +1033,17 @@ Decisions, not to be relitigated:
   everything-resets-on-return problem. Becomes `INITIAL_RD = 700` (seeding in
   `compute_ratings` and `get_rating_history`, plus the `old_time is None`
   branch) and `MAX_DECAY_RD = 350` (the cap, and `RD_INCREASE_SCALE_SQ`), with
-  `RD_RESET_TIME = 365`. A character ranked to `TYPICAL_RD` then reaches half a
-  new character's uncertainty after a year and stops. Verified:
+  `RD_RESET_TIME = 365`. A character ranked to `TYPICAL_RD` then reaches the
+  ceiling after a year and stops. Verified:
   `c^2 = (350^2 - 50^2)/365 = 328.77`, and rd 50 lands on exactly 350.0 at 365
   days.
+- **The ceiling stays at 350; only the initial moves.** Lowering it to 250
+  would keep more still-valid orderings — 77% of well-separated pairs still
+  read settled at a uniform stale rd, against 63% at 350 — but would also hold
+  22% rather than 9% of the genuinely expired close pairs as settled. Keeping
+  the wrongly-settled share low won. `INITIAL_RD` was set to 450 rather than
+  700 for the ranking-key cost below; anything from 450 up fixes the selection
+  inversion, and the extra orders of magnitude buy nothing.
 - **Decay freezes above the ceiling; it never pulls down.** If `rd_old <
   MAX_DECAY_RD`, `rd_new = min(MAX_DECAY_RD, grown)`; otherwise rd stays put.
   Provably identical to `min(grown, max(old_rd, MAX_DECAY_RD))`. A plain
@@ -1044,19 +1051,31 @@ Decisions, not to be relitigated:
   confidence from nothing. Note the freeze branch is reachable by compared
   characters, not just untouched ones: a wildly lopsided first match leaves rd
   at ~680.
-- **Accepted consequences of `INITIAL_RD = 700`.** An untouched character's
-  ranking key is `1500 - 1400 = 100` against a live list spanning 6..3517, so
-  new characters sort last until first compared (they do not linger — rd 700
-  dominates the selection softmax). And `g(700) = 0.41` vs `g(350) = 0.67`, so
-  a match against a brand-new character carries less information and perturbs
-  the established character's rating less. Placement speed is unaffected: rd
-  after six comparisons is 106 from a 700 start against 101 from 350.
+- **Accepted consequences of `INITIAL_RD = 450`.** The number that matters:
+  a never-compared character is now ~99x likelier to be selected than a
+  top-rated fully-decayed one, where sharing 350 made it 65x *less* likely —
+  that inversion was the whole of the no-priority-for-new-characters problem.
+  Cost: an untouched character's ranking key is `1500 - 900 = 600` against a
+  live list spanning 6..3517, so it sorts ~18 places lower (60th of 78 rather
+  than 51st) until its first comparison. It does not linger there. And
+  `g(450) = 0.574` vs `g(350) = 0.669`, so a match against a brand-new
+  character carries less information and perturbs the established character's
+  rating less. Placement speed is unaffected: rd after six comparisons is 104
+  from a 450 start against 101 from 350.
 - **`MIN_RD = 30` is dead.** Declared in 2018, referenced nowhere in the tree.
   Drop it with the split.
 - **Settings are per-list, and the migration must not move existing data.**
   New fields default to the new values; the migration sets existing rows to
-  the current ones (90 / 350). Changing live lists' behaviour on merge would
+  the current ones (`INITIAL_RD` 350, `MAX_DECAY_RD` 350, `RD_RESET_TIME` 90,
+  `MATCH_RECENCY_CAP` 90), which reproduces today exactly because the initial
+  and the ceiling then coincide. Changing live lists' behaviour on merge would
   re-rank every other upstream user.
+- **PR shape.** The constant split, the retune and the per-list settings ship
+  as one PR: the retune alone would move every upstream user's rankings, so
+  the settings and their migration are a prerequisite for merge, not a
+  follow-up. Entry 9 is a separate, later PR. Both need verifying on Django
+  2.0.6 / Python 3.5.2 before they go up; a modern-Python test run is not
+  evidence for the pinned stack.
 
 ### 9 — Chaos and focus modes
 
