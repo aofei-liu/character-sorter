@@ -1004,6 +1004,143 @@ the website prunes itself and `deleteList` needed no change. Prefs hold a
 delimited string, not `SessionStore`'s `StringSet`, since a set has no order.
 Arrange mode is screen-local; the order it produces persists.
 
+### 8 — Decay tuning, exposed as per-list settings
+
+Eight years of list 3 (77 characters, 1,912 comparisons) say the decay constant
+is the problem, not the rating model. Repeat matchups contradict at 7-15%
+across every time lag when the pair is far apart, and rise 22% -> 52% over a
+year when it is close. Out-of-sample fits put the forgetting timescale at
+1-2 years against the current 90 days. Live consequence: every character in
+the list currently sits at RD 136-269, so nothing ever reads as settled.
+
+Decisions, not to be relitigated:
+
+- **Tune the constant; do not add a mechanism.** A half-life keyed on pair
+  distance was proposed and rejected — the evidence does not show the rating
+  system is broken, so a second decay term would be redundant and
+  over-complicated.
+- **`RD_RESET_TIME` is two settings wearing one name.** It sets the decay rate
+  via `RD_INCREASE_SCALE_SQ` *and* caps `days_since_last` in
+  `get_match_weight`, where it governs how strongly a long-unseen pairing is
+  preferred. Split them: `RD_RESET_TIME` for decay, `MATCH_RECENCY_CAP` (stays
+  90) for selection. Otherwise retuning decay silently makes rematches far
+  less likely — had the cap moved to 365 with it, a pair met 100 days ago
+  would drop to 27% of a never-met pair's weight, against parity today.
+- **Split `DEFAULT_RD` in two.** It currently serves as both "a new character's
+  uncertainty" and "the ceiling time-decay climbs to", which is why stale and
+  never-compared are indistinguishable after ~90 days idle — the shared cause
+  of both the no-priority-for-new-characters problem and the
+  everything-resets-on-return problem. Becomes `INITIAL_RD = 700` (seeding in
+  `compute_ratings` and `get_rating_history`, plus the `old_time is None`
+  branch) and `MAX_DECAY_RD = 350` (the cap, and `RD_INCREASE_SCALE_SQ`), with
+  `RD_RESET_TIME = 365`. A character ranked to `TYPICAL_RD` then reaches the
+  ceiling after a year and stops. Verified:
+  `c^2 = (350^2 - 50^2)/365 = 328.77`, and rd 50 lands on exactly 350.0 at 365
+  days.
+- **The ceiling stays at 350; only the initial moves.** Lowering it to 250
+  would keep more still-valid orderings — 77% of well-separated pairs still
+  read settled at a uniform stale rd, against 63% at 350 — but would also hold
+  22% rather than 9% of the genuinely expired close pairs as settled. Keeping
+  the wrongly-settled share low won. `INITIAL_RD` was set to 450 rather than
+  700 for the ranking-key cost below; anything from 450 up fixes the selection
+  inversion, and the extra orders of magnitude buy nothing.
+- **Decay freezes above the ceiling; it never pulls down.** If `rd_old <
+  MAX_DECAY_RD`, `rd_new = min(MAX_DECAY_RD, grown)`; otherwise rd stays put.
+  Provably identical to `min(grown, max(old_rd, MAX_DECAY_RD))`. A plain
+  `min(grown, 350)` would instead *lower* an RD already above 350, inventing
+  confidence from nothing. Note the freeze branch is reachable by compared
+  characters, not just untouched ones: a wildly lopsided first match leaves rd
+  at ~680.
+- **Accepted consequences of `INITIAL_RD = 450`.** The number that matters:
+  a never-compared character is now ~99x likelier to be selected than a
+  top-rated fully-decayed one, where sharing 350 made it 65x *less* likely —
+  that inversion was the whole of the no-priority-for-new-characters problem.
+  Cost: an untouched character's ranking key is `1500 - 900 = 600` against a
+  live list spanning 6..3517, so it sorts ~18 places lower (60th of 78 rather
+  than 51st) until its first comparison. It does not linger there. And
+  `g(450) = 0.574` vs `g(350) = 0.669`, so a match against a brand-new
+  character carries less information and perturbs the established character's
+  rating less. Placement speed is unaffected: rd after six comparisons is 104
+  from a 450 start against 101 from 350.
+- **`MIN_RD = 30` is dead.** Declared in 2018, referenced nowhere in the tree.
+  Drop it with the split.
+- **Settings are per-list, and the migration must not move existing data.**
+  New fields default to the new values; the migration sets existing rows to
+  the current ones (`INITIAL_RD` 350, `MAX_DECAY_RD` 350, `RD_RESET_TIME` 90,
+  `MATCH_RECENCY_CAP` 90), which reproduces today exactly because the initial
+  and the ceiling then coincide. Changing live lists' behaviour on merge would
+  re-rank every other upstream user.
+- **PR shape.** The constant split, the retune and the per-list settings ship
+  as one PR: the retune alone would move every upstream user's rankings, so
+  the settings and their migration are a prerequisite for merge, not a
+  follow-up. Entry 9 is a separate, later PR.
+- **Verified on the pinned stack, 2026-09-15.** 49 tests pass under Python
+  3.5.2 / Django 2.0.6 in a scratch clone on the server, against SQLite with
+  `MIGRATION_MODULES = {"controller": None}` (the role lacks `CREATEDB`, so a
+  Postgres test database could not be built; the SQLite run still exercises
+  the interpreter and the framework, which is the point). `sqlmigrate
+  sorterinput 0005` against the live Postgres shows the four `ADD COLUMN`
+  carrying the *old* defaults and the two `AlterField` operations emitting no
+  SQL at all — Django drops the database-level default right after backfilling
+  and applies defaults in Python, so changing one is a pure state change.
+  That is the merge-safety property, confirmed against the real schema.
+- **The validators are form-level only.** The sole database constraint is
+  `CHECK (>= 0)` from `PositiveIntegerField`. Forms, the API and the admin all
+  run them; a direct `objects.create(rd_reset_days=0)` would not, and would
+  then raise `ZeroDivisionError` in `settings_for`. Accepted: nothing writes
+  these outside a form.
+
+### 9 — Chaos and focus modes
+
+`get_next_comparison` is asymmetric — char1 is chosen by rating uncertainty,
+char2 as the most informative reference — and the UI hides that, which is why
+the output reads as arbitrary. Expose the asymmetry rather than change the
+selection.
+
+Decisions, not to be relitigated:
+
+- **Chaos is the default, focus is opt-in per character, per moment.** Not a
+  list-level mode. Chaos costs nothing to keep: only 4% of consecutive
+  comparisons already share a char1, so today's behaviour *is* chaos.
+- **Focus is client-held, not server state.** `/next` takes an optional
+  `focus=<char_id>`, validated through `charlist.character_set`. No migration,
+  no session state, same contract for web and app, survives two devices.
+- **Stop when the opponents run out, not at an RD target.** `get_match_weight`
+  is `days_since_last * inv_dsquared`, so it collapses exactly when no
+  remaining opponent is a close match (irrelevant) or the close ones were just
+  used (repeated) — the two things that actually annoy. Suggest stopping when
+  the best available weight falls below 10% of its value at the start of the
+  run. A suggestion, never a forced exit: over-focusing is cheap because the
+  user can leave any time.
+- **RD targets were tried and get it backwards.** Simulated on the real list:
+  focusing Verso (top of the ladder) collapses to 9% of opening weight by the
+  4th comparison while his RD is still 129, and he is still at RD 118 after
+  fourteen — an RD <= 100 rule would never stop him, and would walk him through
+  ten matchups against characters far below him. Jaime (dense middle) reaches
+  RD 99 by the 6th while his opponents are still 94% as informative. Low weight
+  and stubborn RD are the same fact — lopsided matchups carry little
+  information — but weight reports it immediately.
+- **Stateless, like `focus` itself.** `/next` returns the best available match
+  weight; the client keeps the value from the run's first question and divides.
+  No server-side notion of "a focus run".
+- **Neighbour-bracketing rejected on evidence.** "Lost to the one above, beat
+  the one below" holds for 4 of 77 characters: 69% have never met an immediate
+  neighbour, and 26% have a neighbour result contradicting their rank, since
+  neighbours sit inside the coin-flip band. Elegant, but it would never fire.
+- **Bisection dropped.** Information-gain reference selection already tracks a
+  focused character's rating as it moves, so it is adaptive placement already.
+  A second placement mechanism is not worth it.
+- **Forgetting to toggle is an undo.** Undo now restores the pair it took back
+  rather than sampling a fresh one, so toggling focus after the fact is one
+  tap plus a re-answer.
+- **Insertion-sort lists ignore `focus`** and the UI does not offer the toggle
+  for them; their next pair is already deterministic.
+- **Re-test positional bias after labelling.** char1 currently wins 59.5%, but
+  that is selection, not position — strength alone predicts 58.0%, the fitted
+  position term is not significant, and the within-pair control runs the other
+  way. "Shown first" is a weak cue; "this is the one being ranked" is a much
+  stronger one, and this data cannot speak to it.
+
 ### Deferred: the offline queue
 
 Kept for whenever it comes back. Queuing the writes is the easy half and is
