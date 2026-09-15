@@ -49,6 +49,14 @@ enum class WriteResult { ADDED, FAILED, NOT_SENT }
 
 data class PasteWrite(val name: String, val fandom: String, val result: WriteResult)
 
+/**
+ * A comparison this run posted, with the question that produced it.
+ *
+ * The question is null only if one was somehow answered without a pair on
+ * screen; undo then falls back to asking for a fresh one.
+ */
+data class UndoEntry(val record: Comparison, val question: NextComparison?)
+
 data class UiState(
     val screen: Screen = Screen.Login,
     val busy: Boolean = false,
@@ -82,7 +90,7 @@ data class UiState(
      * exactly as far as this process does and no further — the HTML page's
      * Undo button, which re-queries the database, has no equivalent here.
      */
-    val undoStack: List<Comparison> = emptyList(),
+    val undoStack: List<UndoEntry> = emptyList(),
     /**
      * Each ranked character's rating and 2 * rd, keyed by character id.
      *
@@ -164,31 +172,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun answer(list: CharacterList, char1: Int, char2: Int, verdict: Verdict) = runApiCall {
         val record = client.submitComparison(list.id, char1, char2, verdict)
-        _state.update { it.copy(pending = null, undoStack = it.undoStack + record) }
+        _state.update {
+            it.copy(
+                pending = null,
+                undoStack = it.undoStack + UndoEntry(record, it.pending)
+            )
+        }
         loadNextBlocking(list)
     }
 
     /**
-     * Deletes the most recent comparison this run posted.
+     * Deletes the most recent comparison this run posted and puts its pair
+     * back on screen.
      *
-     * The pair that comes back afterwards is a *different* question for a
-     * Glicko list, which samples `/next` from a softmax — undoing takes the
-     * record back, it does not re-ask what was just answered. The entry is
-     * popped only once the server has accepted the delete, so a failed undo
-     * stays on the stack and can be retried.
-     *
-     * The pending pair is dropped alongside the pop for the same reason as in
-     * [answer], though the risk here is weaker: a pair left over from a failed
-     * `/next` was never answered, so re-answering it would write a first
-     * record rather than a duplicate. It is cleared anyway, because that pair
-     * was chosen against ratings the undo has since changed.
+     * The pair is the cached question, not a fresh `/next`: Glicko samples
+     * `/next` from a softmax, so re-fetching would ask something else and the
+     * answer just taken back could never be reconsidered. Its progress string
+     * is correct again too, the delete having restored the state it was
+     * computed in. The entry is popped only once the server has accepted the
+     * delete, so a failed undo stays on the stack and can be retried.
      */
     fun undo(list: CharacterList) {
-        val record = _state.value.undoStack.lastOrNull() ?: return
+        val entry = _state.value.undoStack.lastOrNull() ?: return
         runApiCall {
-            client.deleteComparison(list.id, record.id)
-            _state.update { it.copy(pending = null, undoStack = it.undoStack.dropLast(1)) }
-            loadNextBlocking(list)
+            client.deleteComparison(list.id, entry.record.id)
+            _state.update {
+                it.copy(pending = entry.question, undoStack = it.undoStack.dropLast(1))
+            }
+            if (entry.question == null) {
+                loadNextBlocking(list)
+            }
         }
     }
 
