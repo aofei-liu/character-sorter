@@ -25,10 +25,11 @@ Three possible shapes:
 | Mobile UI merged upstream, owner uses the deployed site | **Done** (`#11`). Smallest change, no infrastructure, no credentials. Cost: every future tweak needs the maintainer to merge. |
 | JSON API merged upstream once, fork becomes a pure client | **Done** (`#12`). One focused PR, then the fork iterates independently forever. Required for any native app. |
 
-Both landed on 2026-09-02, and both are **deployed** — verified the same day
-against the running site. `charsorter.lndyn.com` serves the responsive UI and
-all eight `/api/` endpoints, so the fork can now read and write the live
-database as a client. That was the whole point of the sequence below.
+Both landed on 2026-09-02. The API was verified deployed the same day;
+the responsive UI was not, despite the note that then claimed it — see below.
+`charsorter.lndyn.com` serves all eight `/api/` endpoints, so the fork can read
+and write the live database as a client. That was the whole point of the
+sequence below. As of 2026-09-15 the host runs upstream through `#18`.
 
 ### Verifying the live site
 
@@ -45,8 +46,22 @@ rather than a catch-all.
 
 On 2026-09-02 all eight endpoints answered `401 application/json`, while
 `/api/bogus` and `/api/auth/token` answered `404 text/html` — the latter
-confirming 3b is absent, as intended. The home page carries the viewport tag
-and `/static/core/css/style.css`, so `#11` is live too.
+confirming 3b is absent, as intended. The home page carries the viewport tag,
+which is real evidence for the template half of `#11`.
+
+**Check the stylesheet's contents, not that it is linked.** The 2026-09-02 note
+concluded `#11` was live because the page linked `/static/core/css/style.css`.
+That link predates `#11` and proves nothing. Static files are served from a
+collected directory and do not move on `git pull` — only `collectstatic` moves
+them — so a deploy can serve current templates against a stale stylesheet, and
+that is exactly what happened: the responsive CSS did not reach the host until
+2026-09-15. Grep the served file for a rule the change introduced:
+
+    $ curl -s https://charsorter.lndyn.com/static/core/css/style.css \
+          | grep -c '@media'
+    3
+
+Zero means stale static, whatever the HTML says.
 
 A cloud session cannot reach the host under the default **Trusted** network
 access: the egress proxy answers `403` to `CONNECT`, and `WebFetch` is bound by

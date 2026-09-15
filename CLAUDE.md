@@ -14,9 +14,14 @@ which is deployed at <https://charsorter.lndyn.com/>. Upstream's default branch
 is `main`. It was dormant from 2019 until 2026-09-02, when it squash-merged
 this fork's three source PRs: `#10` authorization fixes, `#11` responsive UI,
 `#12` JSON API. (Verified by fetching the repo — see "Opening a PR against
-upstream".) All three are **deployed** as well as merged, confirmed the same
-day against the running site; `ROADMAP.md` records the check and how to repeat
-it.
+upstream".) All three are merged. On deployment, be careful: the 2026-09-02
+check confirmed the *routes* and the *templates* were live, but inferred the
+stylesheet was current from the home page merely linking to it — which proves
+nothing, since that link predates `#11`. The responsive CSS in fact only
+reached the running site on 2026-09-15, when a deploy ran `collectstatic`.
+Templates and routes update on `git pull`; static files do not. `ROADMAP.md`
+records the check and how to repeat it, including the asset check that was
+missing.
 
 `45a897d` is the last commit the two shared. Upstream squashed each PR into one
 commit, so the two now agree on *content* but share no history past that point;
