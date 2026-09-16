@@ -125,7 +125,12 @@ data class NextComparison(
     val done: Boolean,
     val char1: Character? = null,
     val char2: Character? = null,
-    val progress: String? = null
+    val progress: String? = null,
+    /**
+     * How informative the best available opponent is, or null for a
+     * controller that does not rate (insertion sort).
+     */
+    @SerialName("match_weight") val matchWeight: Double? = null
 )
 
 /**

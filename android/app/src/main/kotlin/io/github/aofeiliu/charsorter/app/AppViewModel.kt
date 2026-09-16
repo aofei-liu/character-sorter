@@ -92,6 +92,11 @@ data class UiState(
      */
     val undoStack: List<UndoEntry> = emptyList(),
     /**
+     * The character being ranked against the whole list, or null for the
+     * default behaviour, where `/next` picks whoever is least certain.
+     */
+    val focus: Character? = null,
+    /**
      * Each ranked character's rating and 2 * rd, keyed by character id.
      *
      * The ranking's own annotation is `rating - 2 * rd` with the uncertainty
@@ -154,7 +159,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openForSorting(list: CharacterList) {
         _state.update {
-            it.copy(screen = Screen.Sorting(list), pending = null, undoStack = emptyList())
+            it.copy(
+                screen = Screen.Sorting(list), pending = null,
+                undoStack = emptyList(), focus = null
+            )
         }
         runApiCall { loadNextBlocking(list) }
     }
@@ -374,8 +382,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun loadNext(list: CharacterList) = runApiCall { loadNextBlocking(list) }
 
     private fun loadNextBlocking(list: CharacterList) {
-        val next = client.nextComparison(list.id)
+        val focus = _state.value.focus
+        val next = client.nextComparison(list.id, focus = focus?.id)
         _state.update { it.copy(pending = next) }
+    }
+
+    /** Ranks [character] against the whole list until stopped. */
+    fun startFocus(list: CharacterList, character: Character) {
+        _state.update { it.copy(focus = character) }
+        runApiCall { loadNextBlocking(list) }
+    }
+
+    /**
+     * Leaves focus, keeping the pair already on screen.
+     *
+     * Dropping it would throw away a question the user can still answer, and
+     * the answer is equally valid either way — focus changes which question
+     * is asked, not what a comparison means.
+     */
+    fun stopFocus() {
+        _state.update { it.copy(focus = null) }
     }
 
     /**

@@ -41,11 +41,16 @@ fun SortScreen(
     pending: NextComparison?,
     busy: Boolean,
     canUndo: Boolean,
+    focus: Character?,
     onAnswer: (Verdict) -> Unit,
     onUndo: () -> Unit,
+    onStartFocus: (Character) -> Unit,
+    onStopFocus: () -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit
 ) {
+    // Null weight means the controller does not rate, so focus is meaningless.
+    val canFocus = pending?.matchWeight != null
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -82,6 +87,25 @@ fun SortScreen(
             if (canUndo) {
                 TextButton(onClick = onUndo, enabled = !busy) {
                     Text("Undo", style = CharSorterType.ButtonSecondary, color = CharSorterColor.Link)
+                }
+            }
+        }
+        if (focus != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Ranking ${focus.name}",
+                    style = CharSorterType.ProgressText,
+                    color = CharSorterColor.Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                )
+                TextButton(onClick = onStopFocus, enabled = !busy) {
+                    Text("Stop", style = CharSorterType.ButtonSecondary, color = CharSorterColor.Link)
                 }
             }
         }
@@ -140,6 +164,20 @@ fun SortScreen(
                     ) {
                         Text("Same", style = CharSorterType.ButtonTie, maxLines = 1)
                     }
+                    if (canFocus) {
+                        // Focus pins char1, so during a run only char2 is
+                        // worth offering.
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (focus == null) {
+                                FocusButton(char1, !busy, Modifier.weight(1f, false), onStartFocus)
+                            }
+                            FocusButton(char2, !busy, Modifier.weight(1f, false), onStartFocus)
+                        }
+                    }
                 }
             }
             busy -> Column(
@@ -166,6 +204,29 @@ fun SortScreen(
                 }
             }
         }
+    }
+}
+
+/** Starts ranking one character of the pair against the whole list. */
+@Composable
+private fun FocusButton(
+    character: Character,
+    enabled: Boolean,
+    modifier: Modifier,
+    onStartFocus: (Character) -> Unit
+) {
+    TextButton(
+        onClick = { onStartFocus(character) },
+        enabled = enabled,
+        modifier = modifier
+    ) {
+        Text(
+            "Rank ${character.name}",
+            style = CharSorterType.ButtonSecondary,
+            color = CharSorterColor.Link,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

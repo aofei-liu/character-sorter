@@ -64,6 +64,7 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                         pending = state.pending,
                         busy = state.busy,
                         canUndo = state.undoStack.isNotEmpty(),
+                        focus = state.focus,
                         onAnswer = { verdict ->
                             val pair = state.pending
                             val char1 = pair?.char1?.id
@@ -73,6 +74,8 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                             }
                         },
                         onUndo = { viewModel.undo(screen.list) },
+                        onStartFocus = { viewModel.startFocus(screen.list, it) },
+                        onStopFocus = { viewModel.stopFocus() },
                         onRetry = { viewModel.loadNext(screen.list) },
                         onBack = viewModel::backToLists
                     )
