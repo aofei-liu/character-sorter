@@ -1172,9 +1172,16 @@ building:
 - **`undo` resolves the focus id before deleting**, so a hand-crafted id
   cannot 404 a request that already destroyed the record.
 
-Remaining: the `:client` and `:app` half, and the Path A run — no Docker and
-no server access from this box, so the pinned stack was verified by the owner
-rather than in-session.
+**The app half is done too**, on `android/focus-mode`. `nextComparison` takes
+a focus id and `NextComparison` carries `matchWeight`; the sort screen offers
+one control per character, names the run, and reports when it has stopped
+paying. `matchWeight` is nullable twice over — insertion sort sends null, and
+a server predating the field sends nothing — and both are tested. Stopping
+keeps the pair on screen, since focus changes which question is asked, not
+what an answer means. 93 `:client` tests pass and `:app` assembles.
+
+Remaining: the Path A run. This box has neither Docker nor server access, so
+the pinned stack is verified by the owner rather than in-session.
 
 ### Deferred: the offline queue
 
