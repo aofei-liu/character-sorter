@@ -236,8 +236,16 @@ class CharSorterClient(
      * softmax, so a second call returns a different, equally valid question.
      * [submitComparison] names its characters explicitly, so answer the pair
      * you were handed.
+     *
+     * [focus] pins that character as [NextComparison.char1], ranking it
+     * against the list instead of sampling whoever is least certain. Ignored
+     * by insertion-sort lists. Keep the first [NextComparison.matchWeight] of
+     * a focus run and compare later ones against it; see [FOCUS_STOP_FRACTION].
      */
-    fun nextComparison(listId: Int): NextComparison = get(url("api/lists/$listId/next"))
+    fun nextComparison(listId: Int, focus: Int? = null): NextComparison =
+        get(url("api/lists/$listId/next").newBuilder().apply {
+            if (focus != null) addQueryParameter("focus", focus.toString())
+        }.build())
 
     /**
      * `GET /api/lists/<id>/characters/<id>/history` — how one character's
