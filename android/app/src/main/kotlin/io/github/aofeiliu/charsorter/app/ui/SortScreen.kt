@@ -42,7 +42,6 @@ fun SortScreen(
     busy: Boolean,
     canUndo: Boolean,
     focus: Character?,
-    focusExhausted: Boolean,
     onAnswer: (Verdict) -> Unit,
     onUndo: () -> Unit,
     onStartFocus: (Character) -> Unit,
@@ -98,13 +97,9 @@ fun SortScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    if (focusExhausted) {
-                        "Ranking ${focus.name} \u2014 little left to learn"
-                    } else {
-                        "Ranking ${focus.name}"
-                    },
+                    "Ranking ${focus.name}",
                     style = CharSorterType.ProgressText,
-                    color = if (focusExhausted) CharSorterColor.Muted else CharSorterColor.Ink,
+                    color = CharSorterColor.Ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(end = 8.dp)

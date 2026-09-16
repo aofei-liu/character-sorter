@@ -65,7 +65,6 @@ fun CharSorterApp(viewModel: AppViewModel = viewModel()) {
                         busy = state.busy,
                         canUndo = state.undoStack.isNotEmpty(),
                         focus = state.focus,
-                        focusExhausted = state.focusExhausted,
                         onAnswer = { verdict ->
                             val pair = state.pending
                             val char1 = pair?.char1?.id

@@ -134,15 +134,6 @@ data class NextComparison(
 )
 
 /**
- * A focus run is worth suggesting an end to once the best remaining matchup
- * is worth this little against the one the run opened on. RD is the obvious
- * alternative and gets it backwards: a top-rated character keeps a high RD
- * long after every informative matchup is used up, because lopsided matches
- * carry little information. See ROADMAP.md, entry 9.
- */
-const val FOCUS_STOP_FRACTION = 0.1
-
-/**
  * A stored comparison, as returned by the `201` from
  * `POST /api/lists/<id>/comparisons`.
  *

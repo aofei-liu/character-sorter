@@ -239,8 +239,9 @@ class CharSorterClient(
      *
      * [focus] pins that character as [NextComparison.char1], ranking it
      * against the list instead of sampling whoever is least certain. Ignored
-     * by insertion-sort lists. Keep the first [NextComparison.matchWeight] of
-     * a focus run and compare later ones against it; see [FOCUS_STOP_FRACTION].
+     * by insertion-sort lists. [NextComparison.matchWeight] reports how
+     * informative the best available opponent is; it is a diagnostic, not a
+     * signal to act on -- it moves too slowly to mark a run as finished.
      */
     fun nextComparison(listId: Int, focus: Int? = null): NextComparison =
         get(url("api/lists/$listId/next").newBuilder().apply {
