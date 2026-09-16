@@ -114,7 +114,7 @@ a Django model) with this interface:
 | Method | Purpose |
 | --- | --- |
 | `get_sorted_chars(charlist)` | List of char IDs, best → worst |
-| `get_next_comparison(charlist)` | `(char1_id, char2_id)` to ask next, or `None` when done |
+| `get_next_comparison(charlist, focus=None)` | `(char1_id, char2_id)` to ask next, or `None` when done. `focus` pins char1; Glicko also records `best_match_weight` on the instance |
 | `register_comparison(charlist, c1, c2, value)` | Creates a `SortRecord` (implemented in base) |
 | `get_annotations(charlist)` | `{char_id: annotation}` shown next to each character |
 | `get_graph_info(charlist)` | Data for the Plotly graph, or `None` if unsupported |
@@ -178,7 +178,10 @@ plus `/`, `/login/`, `/logout/`, `/signup/`, `/admin/` at the root.
 - `viewlist` — the ranked list, with annotations and progress.
 - `editlist` — create/edit/delete characters in a list.
 - `sortlist` — **the main loop**: shows one pair, POSTs the answer back to
-  itself, redirects to itself (POST-redirect-GET).
+  itself, redirects to itself (POST-redirect-GET). `?focus=<char_id>` pins
+  char1; `?w0=` carries the weight that focus run opened on, so the whole run
+  lives in the URL and needs no session state. Both survive the redirect and
+  `undo`.
 - `undo` — deletes the most recent `SortRecord`.
 - `graphlist` — Plotly bar-with-error-bars chart of Glicko ratings.
 - `cache` — pre-fetches Google images for every character in a list.
@@ -245,7 +248,16 @@ So there are two paths, and you should know which one you're on:
 **Path A — reproduce the original stack.** Needs Python ≤ 3.7 (production is
 3.5.2 specifically). There is no
 pyenv/conda in the default remote container (`python3.10`–`3.13` only), so this
-generally means Docker.
+means Docker, or the server itself.
+
+The server is the cheaper route and is how `#18` was verified: a scratch
+clone under `/tmp`, a scratch settings module pointing at SQLite with
+`MIGRATION_MODULES = {"controller": None}`, and `~/env/bin/python manage.py
+test`. It touches nothing the live site uses. The role lacks `CREATEDB`, so a
+Postgres test database is not available; the SQLite run still exercises the
+interpreter and the framework, which is the point. **The WSL box has neither
+Docker nor server access**, so a session here cannot do it — prepare the
+script and hand it to the owner.
 
 **Path B — modernize, for local development only.** Verified working
 2026-09-06: `Django==4.2.16` + current `numpy`/`scipy` on Python 3.11

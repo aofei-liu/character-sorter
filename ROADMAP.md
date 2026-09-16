@@ -1154,7 +1154,27 @@ Decisions, not to be relitigated:
   that is selection, not position — strength alone predicts 58.0%, the fitted
   position term is not significant, and the within-pair control runs the other
   way. "Shown first" is a weak cue; "this is the one being ranked" is a much
-  stronger one, and this data cannot speak to it.
+  stronger one, and this data cannot speak to it. Focus labels char1
+  explicitly, so the re-test needs data collected after this ships.
+
+**Server and web halves done 2026-09-15**, on `claude/focus-mode-upstream`
+(three commits, 8 files). `get_next_comparison` takes `focus`, the controller
+records the best available opponent weight, `/next` takes `?focus=` and
+returns `match_weight`, and the sort page offers the toggle, the run banner
+and the stop suggestion. 68 tests pass on Path B. Two details settled while
+building:
+
+- **The run is the query string, nothing else.** `focus` plus `w0`, the
+  weight the run opened on, ride the URL through POST-redirect-GET and undo.
+  `w0` has to travel because the client is the only thing that knows where a
+  run started; a large one formats as `1e+09`, so it needs percent-encoding
+  or the plus decodes as a space. There is a regression test.
+- **`undo` resolves the focus id before deleting**, so a hand-crafted id
+  cannot 404 a request that already destroyed the record.
+
+Remaining: the `:client` and `:app` half, and the Path A run — no Docker and
+no server access from this box, so the pinned stack was verified by the owner
+rather than in-session.
 
 ### Deferred: the offline queue
 
