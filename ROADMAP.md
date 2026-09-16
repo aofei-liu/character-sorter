@@ -29,7 +29,14 @@ Both landed on 2026-09-02. The API was verified deployed the same day;
 the responsive UI was not, despite the note that then claimed it — see below.
 `charsorter.lndyn.com` serves all eight `/api/` endpoints, so the fork can read
 and write the live database as a client. That was the whole point of the
-sequence below. As of 2026-09-15 the host runs upstream through `#18`.
+sequence below.
+
+**The host runs upstream through `#19`** (2026-09-15). Evidenced, not assumed:
+an authenticated `GET /api/lists/<id>/next?focus=<char_id>` returned the
+focused character as `char1` and carried a `match_weight` field, both of which
+`#19` introduced. An earlier note here claimed `#18` was live with nothing
+behind it — the same mistake as the stylesheet, which is why the standard is
+a request whose *response contents* only the new code could produce.
 
 ### Verifying the live site
 
@@ -1120,14 +1127,31 @@ Decisions, not to be relitigated:
 - **Focus is client-held, not server state.** `/next` takes an optional
   `focus=<char_id>`, validated through `charlist.character_set`. No migration,
   no session state, same contract for web and app, survives two devices.
-- **Stop when the opponents run out, not at an RD target.** `get_match_weight`
-  is `days_since_last * inv_dsquared`, so it collapses exactly when no
-  remaining opponent is a close match (irrelevant) or the close ones were just
-  used (repeated) — the two things that actually annoy. Suggest stopping when
-  the best available weight falls below 10% of its value at the start of the
-  run. A suggestion, never a forced exit: over-focusing is cheap because the
-  user can leave any time.
-- **RD targets were tried and get it backwards.** Simulated on the real list:
+- **~~Stop when the opponents run out, not at an RD target.~~ Withdrawn
+  2026-09-15 — there is no stop suggestion.** The plan was to suggest ending a
+  run once the best available weight fell below 10% of its value at the run's
+  start. Built, shipped in `#19`, and measured against two live lists: after
+  five comparisons the best weight was still **96%** of opening on list 3, and
+  **93%** after four on another. A tenth would take roughly 300 comparisons.
+  Removed rather than retuned.
+
+  The statistic is what fails, not the threshold. `best_match_weight` is a
+  **max over every opponent**; answering a comparison drains exactly one, so
+  the max slides to the next-best, a percent or two down. Comparing against
+  the best *possible* opponent instead fails identically, being a max over the
+  same pool. No max-based signal collapses at the rate a run does. Anything
+  future has to measure marginal gain — how much the next match would move the
+  focused character — not the state of the pool.
+
+  The owner's call on the replacement: none. "Just let the user decide when
+  they want to exit focus mode." Over-focusing is cheap, which was the
+  original argument for making it a suggestion in the first place.
+
+  The removal is upstream `#20`, verified on the pinned stack: 65 tests pass
+  and the system check is clean on Django 2.0.6 / Python 3.5.2.
+- **RD targets were tried and get it backwards.** *This entry rests on a
+  measurement that did not reproduce — see the withdrawal above. Treat its
+  numbers as unverified.* Simulated on the real list:
   focusing Verso (top of the ladder) collapses to 9% of opening weight by the
   4th comparison while his RD is still 129, and he is still at RD 118 after
   fourteen — an RD <= 100 rule would never stop him, and would walk him through
@@ -1154,7 +1178,41 @@ Decisions, not to be relitigated:
   that is selection, not position — strength alone predicts 58.0%, the fitted
   position term is not significant, and the within-pair control runs the other
   way. "Shown first" is a weak cue; "this is the one being ranked" is a much
-  stronger one, and this data cannot speak to it.
+  stronger one, and this data cannot speak to it. Focus labels char1
+  explicitly, so the re-test needs data collected after this ships.
+
+**Server and web halves done 2026-09-15**, on `claude/focus-mode-upstream`
+(three commits, 8 files). `get_next_comparison` takes `focus`, the controller
+records the best available opponent weight, `/next` takes `?focus=` and
+returns `match_weight`, and the sort page offers the toggle and the run
+banner. It also shipped the stop suggestion, withdrawn the same day; the
+removal is `claude/drop-stop-hint-upstream`. Two details settled while
+building:
+
+- **The run is the query string, nothing else.** `focus` rides the URL
+  through POST-redirect-GET and undo, so a run needs no session state and the
+  same contract serves web and app. It briefly carried `w0` as well, for the
+  stop suggestion; that is gone with it.
+- **`undo` resolves the focus id before deleting**, so a hand-crafted id
+  cannot 404 a request that already destroyed the record.
+
+**The app half is done too**, on `android/focus-mode`. `nextComparison` takes
+a focus id and `NextComparison` carries `matchWeight`; the sort screen offers
+one control per character and names the run. `matchWeight` is kept as a
+diagnostic — it is what the withdrawal above was measured with — and is
+nullable twice over — insertion sort sends null, and
+a server predating the field sends nothing — and both are tested. Stopping
+keeps the pair on screen, since focus changes which question is asked, not
+what an answer means. 93 `:client` tests pass and `:app` assembles.
+
+**Verified on the pinned stack 2026-09-15**: 68 tests pass and the system
+check is clean, run on the deployment host through `~/env` against SQLite
+with `controller`'s migrations disabled. This box has neither Docker nor
+server access, so the run is the owner's; the script is in `CLAUDE.md` under
+Path A. Corroborating detail worth keeping: the clean check is itself
+evidence of the old interpreter, since the four `models.W042`
+`DEFAULT_AUTO_FIELD` warnings a Path B run emits did not exist before
+Django 3.2.
 
 ### Deferred: the offline queue
 
