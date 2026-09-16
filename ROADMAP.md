@@ -1180,8 +1180,14 @@ a server predating the field sends nothing — and both are tested. Stopping
 keeps the pair on screen, since focus changes which question is asked, not
 what an answer means. 93 `:client` tests pass and `:app` assembles.
 
-Remaining: the Path A run. This box has neither Docker nor server access, so
-the pinned stack is verified by the owner rather than in-session.
+**Verified on the pinned stack 2026-09-15**: 68 tests pass and the system
+check is clean, run on the deployment host through `~/env` against SQLite
+with `controller`'s migrations disabled. This box has neither Docker nor
+server access, so the run is the owner's; the script is in `CLAUDE.md` under
+Path A. Corroborating detail worth keeping: the clean check is itself
+evidence of the old interpreter, since the four `models.W042`
+`DEFAULT_AUTO_FIELD` warnings a Path B run emits did not exist before
+Django 3.2.
 
 ### Deferred: the offline queue
 
