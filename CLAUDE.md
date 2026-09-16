@@ -179,9 +179,8 @@ plus `/`, `/login/`, `/logout/`, `/signup/`, `/admin/` at the root.
 - `editlist` — create/edit/delete characters in a list.
 - `sortlist` — **the main loop**: shows one pair, POSTs the answer back to
   itself, redirects to itself (POST-redirect-GET). `?focus=<char_id>` pins
-  char1; `?w0=` carries the weight that focus run opened on, so the whole run
-  lives in the URL and needs no session state. Both survive the redirect and
-  `undo`.
+  char1, so the run lives in the URL and needs no session state. It survives
+  the redirect and `undo`.
 - `undo` — deletes the most recent `SortRecord`.
 - `graphlist` — Plotly bar-with-error-bars chart of Glicko ratings.
 - `cache` — pre-fetches Google images for every character in a list.
