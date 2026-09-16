@@ -29,7 +29,14 @@ Both landed on 2026-09-02. The API was verified deployed the same day;
 the responsive UI was not, despite the note that then claimed it — see below.
 `charsorter.lndyn.com` serves all eight `/api/` endpoints, so the fork can read
 and write the live database as a client. That was the whole point of the
-sequence below. As of 2026-09-15 the host runs upstream through `#18`.
+sequence below.
+
+**The host runs upstream through `#19`** (2026-09-15). Evidenced, not assumed:
+an authenticated `GET /api/lists/<id>/next?focus=<char_id>` returned the
+focused character as `char1` and carried a `match_weight` field, both of which
+`#19` introduced. An earlier note here claimed `#18` was live with nothing
+behind it — the same mistake as the stylesheet, which is why the standard is
+a request whose *response contents* only the new code could produce.
 
 ### Verifying the live site
 
@@ -1139,6 +1146,9 @@ Decisions, not to be relitigated:
   The owner's call on the replacement: none. "Just let the user decide when
   they want to exit focus mode." Over-focusing is cheap, which was the
   original argument for making it a suggestion in the first place.
+
+  The removal is upstream `#20`, verified on the pinned stack: 65 tests pass
+  and the system check is clean on Django 2.0.6 / Python 3.5.2.
 - **RD targets were tried and get it backwards.** *This entry rests on a
   measurement that did not reproduce — see the withdrawal above. Treat its
   numbers as unverified.* Simulated on the real list:
