@@ -9,6 +9,7 @@ import io.github.aofeiliu.charsorter.client.CharSorterClient
 import io.github.aofeiliu.charsorter.client.Character
 import io.github.aofeiliu.charsorter.client.CharacterList
 import io.github.aofeiliu.charsorter.client.Comparison
+import io.github.aofeiliu.charsorter.client.FOCUS_STOP_FRACTION
 import io.github.aofeiliu.charsorter.client.Graph
 import io.github.aofeiliu.charsorter.client.InvalidRequestException
 import io.github.aofeiliu.charsorter.client.ListOrder
@@ -92,6 +93,18 @@ data class UiState(
      */
     val undoStack: List<UndoEntry> = emptyList(),
     /**
+     * The character being ranked against the whole list, or null for the
+     * default behaviour, where `/next` picks whoever is least certain.
+     */
+    val focus: Character? = null,
+    /**
+     * The best match weight at the moment the current focus run started.
+     *
+     * Held here rather than on the server: a focus run has no server-side
+     * existence, so the client is the only thing that knows where one began.
+     */
+    val focusOpeningWeight: Double? = null,
+    /**
      * Each ranked character's rating and 2 * rd, keyed by character id.
      *
      * The ranking's own annotation is `rating - 2 * rd` with the uncertainty
@@ -116,7 +129,18 @@ data class UiState(
     val pasteCaret: Int? = null,
     /** Per-entry outcome of the last batch write, or null before one runs. */
     val pasteWrites: List<PasteWrite>? = null
-)
+) {
+    /**
+     * Whether the focus run has stopped paying: the best matchup left is
+     * worth under [FOCUS_STOP_FRACTION] of the one it opened on.
+     */
+    val focusExhausted: Boolean
+        get() {
+            val weight = pending?.matchWeight ?: return false
+            val opening = focusOpeningWeight ?: return false
+            return focus != null && weight < FOCUS_STOP_FRACTION * opening
+        }
+}
 
 /**
  * Owns the one [CharSorterClient] instance and every prototype screen's
@@ -154,7 +178,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openForSorting(list: CharacterList) {
         _state.update {
-            it.copy(screen = Screen.Sorting(list), pending = null, undoStack = emptyList())
+            it.copy(
+                screen = Screen.Sorting(list), pending = null,
+                undoStack = emptyList(), focus = null, focusOpeningWeight = null
+            )
         }
         runApiCall { loadNextBlocking(list) }
     }
@@ -374,8 +401,37 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun loadNext(list: CharacterList) = runApiCall { loadNextBlocking(list) }
 
     private fun loadNextBlocking(list: CharacterList) {
-        val next = client.nextComparison(list.id)
-        _state.update { it.copy(pending = next) }
+        val focus = _state.value.focus
+        val next = client.nextComparison(list.id, focus = focus?.id)
+        _state.update {
+            it.copy(
+                pending = next,
+                focusOpeningWeight = it.focusOpeningWeight ?: next.matchWeight
+            )
+        }
+    }
+
+    /**
+     * Ranks [character] against the whole list until stopped.
+     *
+     * Starting a run clears the remembered opening weight so the next
+     * `/next` seeds it afresh; that weight is what the stop suggestion is
+     * measured against.
+     */
+    fun startFocus(list: CharacterList, character: Character) {
+        _state.update { it.copy(focus = character, focusOpeningWeight = null) }
+        runApiCall { loadNextBlocking(list) }
+    }
+
+    /**
+     * Leaves focus, keeping the pair already on screen.
+     *
+     * Dropping it would throw away a question the user can still answer, and
+     * the answer is equally valid either way — focus changes which question
+     * is asked, not what a comparison means.
+     */
+    fun stopFocus() {
+        _state.update { it.copy(focus = null, focusOpeningWeight = null) }
     }
 
     /**
